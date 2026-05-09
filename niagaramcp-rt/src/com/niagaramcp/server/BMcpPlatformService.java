@@ -24,6 +24,8 @@ import javax.baja.sys.Context;
 import javax.baja.sys.Property;
 import javax.baja.sys.Sys;
 import javax.baja.sys.Type;
+import com.niagaramcp.server.knowledge.KnowledgeStore;
+import java.io.File;
 import com.niagaramcp.server.tools.BqlQueryTool;
 import com.niagaramcp.server.tools.EchoTool;
 import com.niagaramcp.server.tools.ListChildrenTool;
@@ -43,7 +45,10 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "status",                   type = "String",  defaultValue = "\"stopped\"", flags = 1),
   @NiagaraProperty(name = "apiToken",                 type = "String",  defaultValue = "\"\""),
   @NiagaraProperty(name = "sseHeartbeatSec",          type = "int",     defaultValue = "25"),
-  @NiagaraProperty(name = "mcpSessionIdleTimeoutSec", type = "int",     defaultValue = "1800")
+  @NiagaraProperty(name = "mcpSessionIdleTimeoutSec", type = "int",     defaultValue = "1800"),
+  @NiagaraProperty(name = "knowledgeFilePath",        type = "String",  defaultValue = "\"\""),
+  @NiagaraProperty(name = "knowledgeAutoBackup",      type = "boolean", defaultValue = "true"),
+  @NiagaraProperty(name = "knowledgeBackupCount",     type = "int",     defaultValue = "5")
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -75,6 +80,18 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public int getMcpSessionIdleTimeoutSec() { return getInt(mcpSessionIdleTimeoutSec); }
   public void setMcpSessionIdleTimeoutSec(int v) { setInt(mcpSessionIdleTimeoutSec, v, null); }
 
+  public static final Property knowledgeFilePath = newProperty(0, "", null);
+  public String getKnowledgeFilePath() { return getString(knowledgeFilePath); }
+  public void setKnowledgeFilePath(String v) { setString(knowledgeFilePath, v, null); }
+
+  public static final Property knowledgeAutoBackup = newProperty(0, true, null);
+  public boolean getKnowledgeAutoBackup() { return getBoolean(knowledgeAutoBackup); }
+  public void setKnowledgeAutoBackup(boolean v) { setBoolean(knowledgeAutoBackup, v, null); }
+
+  public static final Property knowledgeBackupCount = newProperty(0, 5, null);
+  public int getKnowledgeBackupCount() { return getInt(knowledgeBackupCount); }
+  public void setKnowledgeBackupCount(int v) { setInt(knowledgeBackupCount, v, null); }
+
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
 
@@ -87,6 +104,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
 
   private boolean serviceIsRunning = false;
   private static volatile ToolRegistry REGISTRY = null;
+  private static volatile KnowledgeStore KNOWLEDGE = null;
   private static volatile BMcpPlatformService INSTANCE = null;
 
   // ================================================================
@@ -110,8 +128,20 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new WritePointTool());
     r.register((Tool) new BqlQueryTool());
     REGISTRY = r;
-    INSTANCE = this;
 
+    // Knowledge store — load from configured path (or default).
+    KnowledgeStore ks = new KnowledgeStore();
+    ks.setFile(resolveKnowledgeFile());
+    ks.setAutoBackup(getKnowledgeAutoBackup());
+    ks.setBackupCount(getKnowledgeBackupCount());
+    try {
+      ks.load();
+    } catch (Exception e) {
+      bcLog("KnowledgeStore.load failed (using empty model): " + e.getMessage());
+    }
+    KNOWLEDGE = ks;
+
+    INSTANCE = this;
     setStatus(getEnabled() ? "running" : "disabled");
     serviceIsRunning = true;
   }
@@ -121,9 +151,20 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     bcLog("serviceStopped");
     McpSessions.closeAll();
     REGISTRY = null;
+    KNOWLEDGE = null;
     INSTANCE = null;
     setStatus("stopped");
     serviceIsRunning = false;
+  }
+
+  private File resolveKnowledgeFile() {
+    String path = getKnowledgeFilePath();
+    if (path != null && path.length() > 0) {
+      return new File(path);
+    }
+    File userHome = Sys.getNiagaraUserHome();
+    File dir = new File(userHome, "niagaramcp");
+    return new File(dir, "knowledge.yaml");
   }
 
   @Override
@@ -177,6 +218,11 @@ public final class BMcpPlatformService extends BComponent implements BIService {
 
   public static ToolRegistry getRegistry() {
     return REGISTRY;
+  }
+
+  /** @return the singleton KnowledgeStore, or {@code null} if service not started. */
+  public static KnowledgeStore getKnowledgeStore() {
+    return KNOWLEDGE;
   }
 
   /** @return current singleton service instance, or {@code null} if not started. */
