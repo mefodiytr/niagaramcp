@@ -67,20 +67,124 @@ public final class McpServlet extends UnauthenticatedServlet {
   }
 
   // ================================================================
-  // Streamable HTTP handlers — stubs in this commit; real bodies in
-  // commit 5.
+  // Streamable HTTP handlers (MCP spec 2025-06-18)
   // ================================================================
 
-  private void handleStreamableGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-    sendPlain(resp, 501, "Streamable HTTP GET not implemented yet");
-  }
+  private static final String SESSION_ID_HEADER = "Mcp-Session-Id";
 
+  /**
+   * POST /mcp — JSON-RPC inbound for Streamable HTTP.
+   *
+   * <ul>
+   *   <li>If the request lacks {@code Mcp-Session-Id}, the body must be an
+   *       {@code initialize} call. The server generates a fresh session id,
+   *       creates a {@link StreamableSession}, and returns the id in the
+   *       response header.</li>
+   *   <li>Otherwise the header must reference a live session (per
+   *       {@link McpSessions#acquireStreamable(String, long)}); else 404.</li>
+   *   <li>Successful dispatches return {@code 200 application/json}; client
+   *       notifications (no JSON-RPC id) return {@code 202 Accepted} with an
+   *       empty body. Streaming response shape (text/event-stream on POST)
+   *       is intentionally not implemented in v0.2.0 — current tools produce
+   *       no mid-call progress.</li>
+   * </ul>
+   */
   private void handleStreamablePost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-    sendPlain(resp, 501, "Streamable HTTP POST not implemented yet");
+    JSONObject request;
+    try {
+      request = readJson(req);
+    } catch (Exception e) {
+      sendPlain(resp, 400, "Bad JSON: " + e.getMessage());
+      return;
+    }
+
+    String sessionIdHeader = req.getHeader(SESSION_ID_HEADER);
+    StreamableSession session;
+    if (sessionIdHeader == null || sessionIdHeader.length() == 0) {
+      // No session id — this MUST be an initialize call.
+      String method = request.optString("method", "");
+      if (!"initialize".equals(method)) {
+        sendPlain(resp, 400,
+            "Missing " + SESSION_ID_HEADER + " header; send an `initialize` request first");
+        return;
+      }
+      session = McpSessions.createStreamable();
+      resp.setHeader(SESSION_ID_HEADER, session.getSessionId());
+      bcLog("Streamable open sid=" + session.getSessionId());
+    } else {
+      session = McpSessions.acquireStreamable(
+          sessionIdHeader, BMcpPlatformService.mcpSessionIdleTimeoutMs());
+      if (session == null) {
+        sendPlain(resp, 404, "Session not found or expired: " + sessionIdHeader);
+        return;
+      }
+    }
+
+    JSONObject response = McpProtocol.handle(request, BMcpPlatformService.getRegistry(), session);
+    if (response == null) {
+      // Notification — no body to deliver.
+      resp.setStatus(202);
+      resp.setContentType("text/plain; charset=utf-8");
+      resp.getWriter().flush();
+      return;
+    }
+
+    String body = response.toString();
+    resp.setStatus(200);
+    resp.setContentType("application/json; charset=utf-8");
+    PrintWriter w = resp.getWriter();
+    w.write(body);
+    w.flush();
   }
 
+  /**
+   * GET /mcp — server-initiated push channel.
+   *
+   * <p>Spec-allowed degenerate implementation: open the SSE response,
+   * write a single comment, close. The current tool set produces no
+   * server-initiated messages, so there is nothing to push. A future
+   * iteration that introduces tool-progress events or sampling requests
+   * can replace this with a real {@link StreamableSession}-backed queue
+   * (parallel to the existing {@link SseSession} loop).
+   */
+  private void handleStreamableGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    String sessionIdHeader = req.getHeader(SESSION_ID_HEADER);
+    if (sessionIdHeader == null || sessionIdHeader.length() == 0) {
+      sendPlain(resp, 400, "Missing " + SESSION_ID_HEADER + " header");
+      return;
+    }
+    StreamableSession session = McpSessions.acquireStreamable(
+        sessionIdHeader, BMcpPlatformService.mcpSessionIdleTimeoutMs());
+    if (session == null) {
+      sendPlain(resp, 404, "Session not found or expired: " + sessionIdHeader);
+      return;
+    }
+
+    resp.setStatus(200);
+    resp.setContentType("text/event-stream; charset=utf-8");
+    resp.setHeader("Cache-Control", "no-cache");
+    resp.setHeader("Connection", "keep-alive");
+    resp.setHeader("X-Accel-Buffering", "no");
+    PrintWriter w = resp.getWriter();
+    w.write(": stream-open\n\n");
+    w.flush();
+    bcLog("Streamable GET (no push payload) sid=" + session.getSessionId());
+    // Returning ends the response; client will reconnect if/when needed.
+  }
+
+  /**
+   * DELETE /mcp — explicit session close (MCP spec 2025-06-18).
+   * Idempotent: deleting an unknown id still returns 204.
+   */
   private void handleStreamableDelete(HttpServletRequest req, HttpServletResponse resp) throws IOException {
-    sendPlain(resp, 501, "Streamable HTTP DELETE not implemented yet");
+    String sessionIdHeader = req.getHeader(SESSION_ID_HEADER);
+    if (sessionIdHeader == null || sessionIdHeader.length() == 0) {
+      sendPlain(resp, 400, "Missing " + SESSION_ID_HEADER + " header");
+      return;
+    }
+    McpSessions.remove(sessionIdHeader);
+    bcLog("Streamable close sid=" + sessionIdHeader);
+    resp.setStatus(204);
   }
 
   private void handleSse(HttpServletRequest req, HttpServletResponse resp) throws IOException {
