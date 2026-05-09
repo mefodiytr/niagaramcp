@@ -27,6 +27,9 @@ import javax.baja.sys.Type;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 import java.io.File;
 import com.niagaramcp.server.tools.BqlQueryTool;
+import com.niagaramcp.server.tools.CreateEquipmentTool;
+import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
+import com.niagaramcp.server.tools.CreateSpaceTool;
 import com.niagaramcp.server.tools.EchoTool;
 import com.niagaramcp.server.tools.FindComponentsByTypeTool;
 import com.niagaramcp.server.tools.GetOverviewTool;
@@ -35,6 +38,8 @@ import com.niagaramcp.server.tools.InspectComponentTool;
 import com.niagaramcp.server.tools.ListChildrenTool;
 import com.niagaramcp.server.tools.ReadPointTool;
 import com.niagaramcp.server.tools.Tool;
+import com.niagaramcp.server.tools.UpdateEquipmentTypeTool;
+import com.niagaramcp.server.tools.UpdateSpaceTool;
 import com.niagaramcp.server.tools.WritePointTool;
 
 /**
@@ -137,6 +142,12 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new InspectComponentTool());
     r.register((Tool) new FindComponentsByTypeTool());
     r.register((Tool) new GetSlotsTool());
+    // v0.3 walkthrough write tools — basic
+    r.register((Tool) new CreateSpaceTool());
+    r.register((Tool) new UpdateSpaceTool());
+    r.register((Tool) new CreateEquipmentTypeTool());
+    r.register((Tool) new UpdateEquipmentTypeTool());
+    r.register((Tool) new CreateEquipmentTool());
     REGISTRY = r;
 
     // Knowledge store — load from configured path (or default).
