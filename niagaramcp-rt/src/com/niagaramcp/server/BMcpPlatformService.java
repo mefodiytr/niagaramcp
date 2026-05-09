@@ -36,6 +36,9 @@ import com.niagaramcp.server.tools.CreateStandalonePointTool;
 import com.niagaramcp.server.tools.EchoTool;
 import com.niagaramcp.server.tools.ExportKnowledgeTool;
 import com.niagaramcp.server.tools.FindComponentsByTypeTool;
+import com.niagaramcp.server.tools.FindEquipmentTool;
+import com.niagaramcp.server.tools.FindInSpaceTool;
+import com.niagaramcp.server.tools.FindPointsTool;
 import com.niagaramcp.server.tools.FindUnmappedComponentsTool;
 import com.niagaramcp.server.tools.GetKnowledgeSummaryTool;
 import com.niagaramcp.server.tools.GetOverviewTool;
@@ -170,6 +173,10 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new ExportKnowledgeTool());
     r.register((Tool) new ImportKnowledgeTool());
     r.register((Tool) new ReloadKnowledgeTool());
+    // v0.3 search via knowledge
+    r.register((Tool) new FindEquipmentTool());
+    r.register((Tool) new FindInSpaceTool());
+    r.register((Tool) new FindPointsTool());
     REGISTRY = r;
 
     // Knowledge store — load from configured path (or default).
