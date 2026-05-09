@@ -29,6 +29,8 @@ dependencies {
   api(":control-rt")
   api(":web-rt")
   api(":history-rt")
+  api(":alarm-rt")
+  api(":bql-rt")
 
   // javax.servlet API (lives in $niagara_home/bin/ext as a flat-file Maven repo).
   compileOnly("javax.servlet:javax.servlet-api:3.1.0")
