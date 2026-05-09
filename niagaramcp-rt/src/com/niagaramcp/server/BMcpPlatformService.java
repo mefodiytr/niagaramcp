@@ -26,10 +26,13 @@ import javax.baja.sys.Sys;
 import javax.baja.sys.Type;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 import java.io.File;
+import com.niagaramcp.server.tools.AssignPointToEquipmentTool;
 import com.niagaramcp.server.tools.BqlQueryTool;
+import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
 import com.niagaramcp.server.tools.CreateSpaceTool;
+import com.niagaramcp.server.tools.CreateStandalonePointTool;
 import com.niagaramcp.server.tools.EchoTool;
 import com.niagaramcp.server.tools.FindComponentsByTypeTool;
 import com.niagaramcp.server.tools.GetOverviewTool;
@@ -38,8 +41,10 @@ import com.niagaramcp.server.tools.InspectComponentTool;
 import com.niagaramcp.server.tools.ListChildrenTool;
 import com.niagaramcp.server.tools.ReadPointTool;
 import com.niagaramcp.server.tools.Tool;
+import com.niagaramcp.server.tools.UpdateEquipmentTool;
 import com.niagaramcp.server.tools.UpdateEquipmentTypeTool;
 import com.niagaramcp.server.tools.UpdateSpaceTool;
+import com.niagaramcp.server.tools.ValidateKnowledgeTool;
 import com.niagaramcp.server.tools.WritePointTool;
 
 /**
@@ -148,6 +153,12 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new CreateEquipmentTypeTool());
     r.register((Tool) new UpdateEquipmentTypeTool());
     r.register((Tool) new CreateEquipmentTool());
+    // v0.3 walkthrough write tools — advanced
+    r.register((Tool) new UpdateEquipmentTool());
+    r.register((Tool) new BulkCreateEquipmentTool());
+    r.register((Tool) new AssignPointToEquipmentTool());
+    r.register((Tool) new CreateStandalonePointTool());
+    r.register((Tool) new ValidateKnowledgeTool());
     REGISTRY = r;
 
     // Knowledge store — load from configured path (or default).
