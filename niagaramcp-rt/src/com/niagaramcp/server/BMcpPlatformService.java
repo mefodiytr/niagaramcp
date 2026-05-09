@@ -28,6 +28,10 @@ import com.niagaramcp.server.knowledge.KnowledgeStore;
 import java.io.File;
 import com.niagaramcp.server.tools.BqlQueryTool;
 import com.niagaramcp.server.tools.EchoTool;
+import com.niagaramcp.server.tools.FindComponentsByTypeTool;
+import com.niagaramcp.server.tools.GetOverviewTool;
+import com.niagaramcp.server.tools.GetSlotsTool;
+import com.niagaramcp.server.tools.InspectComponentTool;
 import com.niagaramcp.server.tools.ListChildrenTool;
 import com.niagaramcp.server.tools.ReadPointTool;
 import com.niagaramcp.server.tools.Tool;
@@ -122,11 +126,17 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     bcLog("serviceStarted");
 
     ToolRegistry r = new ToolRegistry();
+    // v0.1/0.2 baseline tools
     r.register((Tool) new EchoTool());
     r.register((Tool) new ListChildrenTool());
     r.register((Tool) new ReadPointTool());
     r.register((Tool) new WritePointTool());
     r.register((Tool) new BqlQueryTool());
+    // v0.3 walkthrough read tools
+    r.register((Tool) new GetOverviewTool());
+    r.register((Tool) new InspectComponentTool());
+    r.register((Tool) new FindComponentsByTypeTool());
+    r.register((Tool) new GetSlotsTool());
     REGISTRY = r;
 
     // Knowledge store — load from configured path (or default).
