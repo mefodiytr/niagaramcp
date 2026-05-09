@@ -42,11 +42,9 @@ public final class McpServlet extends UnauthenticatedServlet {
     if (!checkServiceEnabled(resp)) return;
     if (!checkAuth(req, resp)) return;
     String path = stripSlash(req.getPathInfo());
-    if ("sse".equals(path)) {
-      handleSse(req, resp);
-    } else {
-      sendPlain(resp, 404, "Not Found: /" + path);
-    }
+    if ("sse".equals(path)) { handleSse(req, resp); return; }
+    if ("mcp".equals(path)) { handleStreamableGet(req, resp); return; }
+    sendPlain(resp, 404, "Not Found: /" + path);
   }
 
   @Override
@@ -54,11 +52,35 @@ public final class McpServlet extends UnauthenticatedServlet {
     if (!checkServiceEnabled(resp)) return;
     if (!checkAuth(req, resp)) return;
     String path = stripSlash(req.getPathInfo());
-    if ("messages".equals(path)) {
-      handleMessage(req, resp);
-    } else {
-      sendPlain(resp, 404, "Not Found: /" + path);
-    }
+    if ("messages".equals(path)) { handleMessage(req, resp); return; }
+    if ("mcp".equals(path))      { handleStreamablePost(req, resp); return; }
+    sendPlain(resp, 404, "Not Found: /" + path);
+  }
+
+  @Override
+  protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    if (!checkServiceEnabled(resp)) return;
+    if (!checkAuth(req, resp)) return;
+    String path = stripSlash(req.getPathInfo());
+    if ("mcp".equals(path)) { handleStreamableDelete(req, resp); return; }
+    sendPlain(resp, 404, "Not Found: /" + path);
+  }
+
+  // ================================================================
+  // Streamable HTTP handlers — stubs in this commit; real bodies in
+  // commit 5.
+  // ================================================================
+
+  private void handleStreamableGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    sendPlain(resp, 501, "Streamable HTTP GET not implemented yet");
+  }
+
+  private void handleStreamablePost(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    sendPlain(resp, 501, "Streamable HTTP POST not implemented yet");
+  }
+
+  private void handleStreamableDelete(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    sendPlain(resp, 501, "Streamable HTTP DELETE not implemented yet");
   }
 
   private void handleSse(HttpServletRequest req, HttpServletResponse resp) throws IOException {
