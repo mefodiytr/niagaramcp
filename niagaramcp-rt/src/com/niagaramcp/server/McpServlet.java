@@ -68,7 +68,7 @@ public final class McpServlet extends UnauthenticatedServlet {
     resp.setHeader("Connection", "keep-alive");
     resp.setHeader("X-Accel-Buffering", "no");
 
-    McpSession session = McpSessions.create();
+    SseSession session = McpSessions.createSse();
     bcLog("SSE open sid=" + session.getSessionId());
     try {
       PrintWriter w = resp.getWriter();
@@ -116,11 +116,14 @@ public final class McpServlet extends UnauthenticatedServlet {
       sendPlain(resp, 400, "Missing sessionId");
       return;
     }
-    McpSession session = McpSessions.get(sessionId);
-    if (session == null) {
+    Session session = McpSessions.get(sessionId);
+    if (!(session instanceof SseSession)) {
+      // Either no such session, or the id refers to a non-SSE session
+      // (Streamable HTTP) — the legacy /messages endpoint only serves SSE.
       sendPlain(resp, 404, "Unknown sessionId");
       return;
     }
+    SseSession sseSession = (SseSession) session;
 
     JSONObject request;
     try {
@@ -130,9 +133,9 @@ public final class McpServlet extends UnauthenticatedServlet {
       return;
     }
 
-    JSONObject response = McpProtocol.handle(request, BMcpPlatformService.getRegistry(), session);
+    JSONObject response = McpProtocol.handle(request, BMcpPlatformService.getRegistry(), sseSession);
     if (response != null) {
-      session.enqueue(response.toString());
+      sseSession.enqueue(response.toString());
     }
 
     resp.setStatus(202);

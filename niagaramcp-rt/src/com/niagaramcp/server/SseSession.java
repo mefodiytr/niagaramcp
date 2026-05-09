@@ -20,12 +20,15 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * One SSE client session: holds an outbound JSON-RPC message queue
+ * SSE-flavoured {@link Session}: holds an outbound JSON-RPC message queue
  * (bounded to {@link #MAX_QUEUE} messages) and a closed/initialized flag.
  * Messages enqueued after overflow are dropped with a warning logged via
  * {@code BMcpPlatformService.bcLog}.
+ *
+ * <p>Lifecycle is bound to a single {@code GET /sse} HTTP connection
+ * (see {@code McpServlet.handleSse}); idle eviction does not apply.
  */
-public final class McpSession {
+public final class SseSession implements Session {
 
   static final String SENTINEL_CLOSE = "__CLOSE__";
   static final int MAX_QUEUE = 1000;
@@ -35,24 +38,34 @@ public final class McpSession {
   private volatile boolean closed = false;
   private volatile boolean initialized = false;
 
-  public McpSession(String sessionId) {
+  public SseSession(String sessionId) {
     this.sessionId = sessionId;
   }
 
+  @Override
   public String getSessionId() {
     return sessionId;
   }
 
+  @Override
   public boolean isInitialized() {
     return initialized;
   }
 
+  @Override
   public void markInitialized() {
     initialized = true;
   }
 
+  @Override
   public boolean isClosed() {
     return closed;
+  }
+
+  /** No-op for SSE — session lifetime is bound to the GET connection. */
+  @Override
+  public void touch() {
+    // intentionally empty
   }
 
   public void enqueue(String jsonRpcMessage) {
@@ -74,6 +87,7 @@ public final class McpSession {
     return outgoing.poll(timeoutMs, TimeUnit.MILLISECONDS);
   }
 
+  @Override
   public void close() {
     if (!closed) {
       closed = true;

@@ -36,7 +36,7 @@ public final class McpProtocol {
   public static final int ERR_INVALID_PARAMS = -32602;
   public static final int ERR_INTERNAL = -32603;
 
-  public static JSONObject handle(JSONObject request, ToolRegistry registry, McpSession session) {
+  public static JSONObject handle(JSONObject request, ToolRegistry registry, Session session) {
     Object id = request.has("id") ? request.get("id") : null;
     boolean isNotification = !request.has("id");
     String method = request.optString("method", "");
