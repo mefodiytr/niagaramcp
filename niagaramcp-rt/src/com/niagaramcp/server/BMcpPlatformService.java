@@ -38,11 +38,12 @@ import com.niagaramcp.server.tools.WritePointTool;
  */
 @NiagaraType
 @NiagaraProperties({
-  @NiagaraProperty(name = "enabled",         type = "boolean", defaultValue = "true"),
-  @NiagaraProperty(name = "showLog",         type = "boolean", defaultValue = "false"),
-  @NiagaraProperty(name = "status",          type = "String",  defaultValue = "\"stopped\"", flags = 1),
-  @NiagaraProperty(name = "apiToken",        type = "String",  defaultValue = "\"\""),
-  @NiagaraProperty(name = "sseHeartbeatSec", type = "int",     defaultValue = "25")
+  @NiagaraProperty(name = "enabled",                  type = "boolean", defaultValue = "true"),
+  @NiagaraProperty(name = "showLog",                  type = "boolean", defaultValue = "false"),
+  @NiagaraProperty(name = "status",                   type = "String",  defaultValue = "\"stopped\"", flags = 1),
+  @NiagaraProperty(name = "apiToken",                 type = "String",  defaultValue = "\"\""),
+  @NiagaraProperty(name = "sseHeartbeatSec",          type = "int",     defaultValue = "25"),
+  @NiagaraProperty(name = "mcpSessionIdleTimeoutSec", type = "int",     defaultValue = "1800")
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -69,6 +70,10 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static final Property sseHeartbeatSec = newProperty(0, 25, null);
   public int getSseHeartbeatSec() { return getInt(sseHeartbeatSec); }
   public void setSseHeartbeatSec(int v) { setInt(sseHeartbeatSec, v, null); }
+
+  public static final Property mcpSessionIdleTimeoutSec = newProperty(0, 1800, null);
+  public int getMcpSessionIdleTimeoutSec() { return getInt(mcpSessionIdleTimeoutSec); }
+  public void setMcpSessionIdleTimeoutSec(int v) { setInt(mcpSessionIdleTimeoutSec, v, null); }
 
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
@@ -156,6 +161,13 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static int sseHeartbeatSec() {
     BMcpPlatformService s = INSTANCE;
     return (s == null) ? 25 : s.getSseHeartbeatSec();
+  }
+
+  /** @return Streamable-HTTP session idle timeout in milliseconds. */
+  public static long mcpSessionIdleTimeoutMs() {
+    BMcpPlatformService s = INSTANCE;
+    int sec = (s == null) ? 1800 : s.getMcpSessionIdleTimeoutSec();
+    return sec * 1000L;
   }
 
   public static boolean showLog() {

@@ -27,7 +27,7 @@ import com.niagaramcp.server.tools.Tool;
  */
 public final class McpProtocol {
 
-  public static final String PROTOCOL_VERSION = "2024-11-05";
+  public static final String PROTOCOL_VERSION = "2025-06-18";
   public static final String SERVER_NAME = "niagaramcp";
   public static final String SERVER_VERSION = "1.0.0";
   public static final int ERR_PARSE = -32700;
@@ -36,7 +36,7 @@ public final class McpProtocol {
   public static final int ERR_INVALID_PARAMS = -32602;
   public static final int ERR_INTERNAL = -32603;
 
-  public static JSONObject handle(JSONObject request, ToolRegistry registry, McpSession session) {
+  public static JSONObject handle(JSONObject request, ToolRegistry registry, Session session) {
     Object id = request.has("id") ? request.get("id") : null;
     boolean isNotification = !request.has("id");
     String method = request.optString("method", "");
