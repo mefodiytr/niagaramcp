@@ -34,12 +34,17 @@ import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
 import com.niagaramcp.server.tools.CreateSpaceTool;
 import com.niagaramcp.server.tools.CreateStandalonePointTool;
 import com.niagaramcp.server.tools.EchoTool;
+import com.niagaramcp.server.tools.ExportKnowledgeTool;
 import com.niagaramcp.server.tools.FindComponentsByTypeTool;
+import com.niagaramcp.server.tools.FindUnmappedComponentsTool;
+import com.niagaramcp.server.tools.GetKnowledgeSummaryTool;
 import com.niagaramcp.server.tools.GetOverviewTool;
 import com.niagaramcp.server.tools.GetSlotsTool;
+import com.niagaramcp.server.tools.ImportKnowledgeTool;
 import com.niagaramcp.server.tools.InspectComponentTool;
 import com.niagaramcp.server.tools.ListChildrenTool;
 import com.niagaramcp.server.tools.ReadPointTool;
+import com.niagaramcp.server.tools.ReloadKnowledgeTool;
 import com.niagaramcp.server.tools.Tool;
 import com.niagaramcp.server.tools.UpdateEquipmentTool;
 import com.niagaramcp.server.tools.UpdateEquipmentTypeTool;
@@ -159,6 +164,12 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new AssignPointToEquipmentTool());
     r.register((Tool) new CreateStandalonePointTool());
     r.register((Tool) new ValidateKnowledgeTool());
+    // v0.3 knowledge management
+    r.register((Tool) new GetKnowledgeSummaryTool());
+    r.register((Tool) new FindUnmappedComponentsTool());
+    r.register((Tool) new ExportKnowledgeTool());
+    r.register((Tool) new ImportKnowledgeTool());
+    r.register((Tool) new ReloadKnowledgeTool());
     REGISTRY = r;
 
     // Knowledge store — load from configured path (or default).
