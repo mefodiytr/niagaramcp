@@ -1,0 +1,4 @@
+<types>
+  <!--com.niagaramcp.server-->
+  <type class="com.niagaramcp.server.BMcpPlatformService" name="McpPlatformService"/>
+</types>

@@ -1,0 +1,49 @@
+# Gradle
+.gradle/
+build/
+!gradle-wrapper.jar
+gradle-app.setting
+
+# Build outputs
+**/build/
+**/.gradle/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.settings/
+.classpath
+.project
+nbproject/
+out/
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and runtime
+*.log
+*.lck
+*.bak
+*.tmp
+*.swp
+*~
+
+# Niagara local
+local/
+my-niagara.gradle*
+
+# Signing keys (если кто-то положит cert в репо — отбить)
+*.jks
+*.p12
+*.pfx
+*.keystore
+keystore.properties

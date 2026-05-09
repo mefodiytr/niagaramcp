@@ -1,0 +1,20 @@
+<permissions>
+  <niagara-permission-groups type="all">
+  </niagara-permission-groups>
+  <niagara-permission-groups type="workbench">
+  </niagara-permission-groups>
+  <niagara-permission-groups type="station">
+    <req-permission>
+      <name>NETWORK_COMMUNICATION</name>
+      <purposeKey>This module needs to communicate with MCP clients over HTTP.</purposeKey>
+      <parameters>
+        <parameter name="hosts" value="*"/>
+        <parameter name="ports" value="*"/>
+      </parameters>
+    </req-permission>
+    <req-permission>
+      <name>UNAUTHENTICATED_ACCESS</name>
+      <purposeKey>This module performs its own bearer-token authentication on the MCP endpoint.</purposeKey>
+    </req-permission>
+  </niagara-permission-groups>
+</permissions>

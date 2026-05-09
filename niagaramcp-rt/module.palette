@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bajaObjectGraph version="4.0" reversibleEncodingKeySource="none" FIPSEnabled="false" reversibleEncodingValidator="[null.1]=" >
+<p m="b=baja" t="b:UnrestrictedFolder">
+
+    <p n="McpPlatformService" m="niagaramcp=niagaramcp" t="niagaramcp:McpPlatformService"/>
+
+</p>
+</bajaObjectGraph>
