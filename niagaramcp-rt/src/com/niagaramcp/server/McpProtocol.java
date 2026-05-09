@@ -64,6 +64,23 @@ public final class McpProtocol {
       if ("tools/call".equals(method)) {
         return ok(id, callTool(registry, params));
       }
+      // v0.3 — resources
+      if ("resources/list".equals(method)) {
+        return ok(id, buildResourcesList(BMcpPlatformService.getResourceRegistry()));
+      }
+      if ("resources/templates/list".equals(method)) {
+        return ok(id, buildResourceTemplatesList(BMcpPlatformService.getResourceRegistry()));
+      }
+      if ("resources/read".equals(method)) {
+        return ok(id, readResource(BMcpPlatformService.getResourceRegistry(), params));
+      }
+      // v0.3 — prompts
+      if ("prompts/list".equals(method)) {
+        return ok(id, buildPromptsList(BMcpPlatformService.getPromptRegistry()));
+      }
+      if ("prompts/get".equals(method)) {
+        return ok(id, getPrompt(BMcpPlatformService.getPromptRegistry(), params));
+      }
       if (isNotification) {
         return null;
       }
@@ -77,7 +94,9 @@ public final class McpProtocol {
 
   private static JSONObject buildInitializeResult() {
     JSONObject caps = new JSONObject();
-    caps.put("tools", new JSONObject());
+    caps.put("tools",     new JSONObject());
+    caps.put("resources", new JSONObject());
+    caps.put("prompts",   new JSONObject());
 
     JSONObject info = new JSONObject();
     info.put("name", SERVER_NAME);
@@ -88,6 +107,99 @@ public final class McpProtocol {
     result.put("capabilities", caps);
     result.put("serverInfo", info);
     return result;
+  }
+
+  // ----- Resources --------------------------------------------------
+
+  private static JSONObject buildResourcesList(ResourceRegistry reg) {
+    JSONArray arr = new JSONArray();
+    if (reg != null) {
+      for (Resource r : reg.staticResources()) {
+        JSONObject o = new JSONObject();
+        o.put("uri",         r.uri());
+        o.put("name",        r.name());
+        if (r.description() != null) o.put("description", r.description());
+        if (r.mimeType()    != null) o.put("mimeType",    r.mimeType());
+        arr.put(o);
+      }
+    }
+    JSONObject out = new JSONObject();
+    out.put("resources", arr);
+    return out;
+  }
+
+  private static JSONObject buildResourceTemplatesList(ResourceRegistry reg) {
+    JSONArray arr = new JSONArray();
+    if (reg != null) {
+      for (Resource r : reg.templates()) {
+        JSONObject o = new JSONObject();
+        o.put("uriTemplate", r.uriTemplate());
+        o.put("name",        r.name());
+        if (r.description() != null) o.put("description", r.description());
+        if (r.mimeType()    != null) o.put("mimeType",    r.mimeType());
+        arr.put(o);
+      }
+    }
+    JSONObject out = new JSONObject();
+    out.put("resourceTemplates", arr);
+    return out;
+  }
+
+  private static JSONObject readResource(ResourceRegistry reg, JSONObject params) {
+    if (reg == null) throw new RpcException(ERR_INTERNAL, "Resource registry not initialized");
+    String uri = params.optString("uri", "");
+    if (uri.length() == 0) throw new RpcException(ERR_INVALID_PARAMS, "Missing 'uri' parameter");
+    Resource r = reg.find(uri);
+    if (r == null) throw new RpcException(ERR_INVALID_PARAMS, "Unknown resource: " + uri);
+    String body;
+    try {
+      body = r.read(uri);
+    } catch (Exception e) {
+      throw new RpcException(ERR_INTERNAL, "Resource read failed: " + e.getMessage());
+    }
+    JSONObject content = new JSONObject();
+    content.put("uri",      uri);
+    content.put("mimeType", r.mimeType() == null ? "text/plain" : r.mimeType());
+    content.put("text",     body == null ? "" : body);
+    JSONArray arr = new JSONArray();
+    arr.put(content);
+    JSONObject out = new JSONObject();
+    out.put("contents", arr);
+    return out;
+  }
+
+  // ----- Prompts ----------------------------------------------------
+
+  private static JSONObject buildPromptsList(PromptRegistry reg) {
+    JSONArray arr = new JSONArray();
+    if (reg != null) {
+      for (Prompt p : reg.all()) {
+        JSONObject o = new JSONObject();
+        o.put("name",        p.name());
+        if (p.description() != null) o.put("description", p.description());
+        JSONArray pa = p.arguments();
+        if (pa != null && pa.length() > 0) o.put("arguments", pa);
+        arr.put(o);
+      }
+    }
+    JSONObject out = new JSONObject();
+    out.put("prompts", arr);
+    return out;
+  }
+
+  private static JSONObject getPrompt(PromptRegistry reg, JSONObject params) {
+    if (reg == null) throw new RpcException(ERR_INTERNAL, "Prompt registry not initialized");
+    String name = params.optString("name", "");
+    if (name.length() == 0) throw new RpcException(ERR_INVALID_PARAMS, "Missing 'name'");
+    Prompt p = reg.get(name);
+    if (p == null) throw new RpcException(ERR_INVALID_PARAMS, "Unknown prompt: " + name);
+    JSONObject promptArgs = params.optJSONObject("arguments");
+    if (promptArgs == null) promptArgs = new JSONObject();
+    JSONArray messages = p.render(promptArgs);
+    JSONObject out = new JSONObject();
+    if (p.description() != null) out.put("description", p.description());
+    out.put("messages", messages == null ? new JSONArray() : messages);
+    return out;
   }
 
   private static JSONObject buildToolsList(ToolRegistry registry) {

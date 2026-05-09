@@ -25,6 +25,19 @@ import javax.baja.sys.Property;
 import javax.baja.sys.Sys;
 import javax.baja.sys.Type;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
+import com.niagaramcp.server.prompts.QueryAlarmSummaryPrompt;
+import com.niagaramcp.server.prompts.QueryEquipmentStatePrompt;
+import com.niagaramcp.server.prompts.QueryZoneComfortPrompt;
+import com.niagaramcp.server.prompts.WalkthroughApplyPatternPrompt;
+import com.niagaramcp.server.prompts.WalkthroughContinuePrompt;
+import com.niagaramcp.server.prompts.WalkthroughNewStationPrompt;
+import com.niagaramcp.server.prompts.WalkthroughVerifyTypesPrompt;
+import com.niagaramcp.server.resources.EquipmentResource;
+import com.niagaramcp.server.resources.KindsCatalogResource;
+import com.niagaramcp.server.resources.OverviewResource;
+import com.niagaramcp.server.resources.SampleKnowledgeResource;
+import com.niagaramcp.server.resources.SpaceResource;
+import com.niagaramcp.server.resources.StandalonePointResource;
 import java.io.File;
 import com.niagaramcp.server.tools.AssignPointToEquipmentTool;
 import com.niagaramcp.server.tools.BqlQueryTool;
@@ -129,6 +142,8 @@ public final class BMcpPlatformService extends BComponent implements BIService {
 
   private boolean serviceIsRunning = false;
   private static volatile ToolRegistry REGISTRY = null;
+  private static volatile ResourceRegistry RESOURCES = null;
+  private static volatile PromptRegistry PROMPTS = null;
   private static volatile KnowledgeStore KNOWLEDGE = null;
   private static volatile BMcpPlatformService INSTANCE = null;
 
@@ -187,6 +202,27 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new GetAlarmHistoryTool());
     REGISTRY = r;
 
+    // v0.3 — Resources
+    ResourceRegistry rr = new ResourceRegistry();
+    rr.register(new OverviewResource());
+    rr.register(new KindsCatalogResource());
+    rr.register(new EquipmentResource());
+    rr.register(new SpaceResource());
+    rr.register(new StandalonePointResource());
+    rr.register(new SampleKnowledgeResource());
+    RESOURCES = rr;
+
+    // v0.3 — Prompts
+    PromptRegistry pr = new PromptRegistry();
+    pr.register(new WalkthroughNewStationPrompt());
+    pr.register(new WalkthroughContinuePrompt());
+    pr.register(new WalkthroughVerifyTypesPrompt());
+    pr.register(new WalkthroughApplyPatternPrompt());
+    pr.register(new QueryEquipmentStatePrompt());
+    pr.register(new QueryZoneComfortPrompt());
+    pr.register(new QueryAlarmSummaryPrompt());
+    PROMPTS = pr;
+
     // Knowledge store — load from configured path (or default).
     KnowledgeStore ks = new KnowledgeStore();
     ks.setFile(resolveKnowledgeFile());
@@ -208,9 +244,11 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public void serviceStopped() throws Exception {
     bcLog("serviceStopped");
     McpSessions.closeAll();
-    REGISTRY = null;
+    REGISTRY  = null;
+    RESOURCES = null;
+    PROMPTS   = null;
     KNOWLEDGE = null;
-    INSTANCE = null;
+    INSTANCE  = null;
     setStatus("stopped");
     serviceIsRunning = false;
   }
@@ -281,6 +319,16 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   /** @return the singleton KnowledgeStore, or {@code null} if service not started. */
   public static KnowledgeStore getKnowledgeStore() {
     return KNOWLEDGE;
+  }
+
+  /** @return the resource registry, or {@code null} if not started. */
+  public static ResourceRegistry getResourceRegistry() {
+    return RESOURCES;
+  }
+
+  /** @return the prompt registry, or {@code null} if not started. */
+  public static PromptRegistry getPromptRegistry() {
+    return PROMPTS;
   }
 
   /** @return current singleton service instance, or {@code null} if not started. */
