@@ -271,3 +271,130 @@ curl -sS -i -H "Authorization: Bearer $TOKEN" \
 | 6 | Legacy /sse + /messages по-прежнему работают | □ |
 
 Любой провал = остановиться и зафлажить, не продолжать релиз.
+
+---
+
+# v0.3.0 — Semantic layer smoke test
+
+После v0.3.0 jar deploy:
+
+```bash
+TOKEN=<apiToken>
+HOST=https://<station-host>
+SID=$(curl -sS -D - -H "Authorization: Bearer $TOKEN" \
+       -H "Content-Type: application/json" \
+       "$HOST/niagaramcp/mcp" \
+       -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}' \
+     | tr -d '\r' | awk -F': ' '/^Mcp-Session-Id/{print $2}')
+hdr() { printf '"Authorization: Bearer %s" "Content-Type: application/json" "Mcp-Session-Id: %s"' "$TOKEN" "$SID"; }
+```
+
+### Шаг 1. capabilities включают resources + prompts
+
+`initialize` ответ должен содержать:
+```json
+"capabilities": { "tools": {}, "resources": {}, "prompts": {} }
+```
+
+### Шаг 2. tools/list возвращает 28 entries
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" "$HOST/niagaramcp/mcp" \
+     -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | jq '.result.tools | length'
+```
+
+Ожидать: `28`.
+
+### Шаг 3. resources/list возвращает 2 static + 4 templated
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":3,"method":"resources/list"}'
+curl ... -d '{"jsonrpc":"2.0","id":4,"method":"resources/templates/list"}'
+```
+
+Ожидать `result.resources` длиной 3 (overview, kinds/catalog, samples/standard-types) и `result.resourceTemplates` длиной 3 (equipment, spaces, standalone-points).
+
+### Шаг 4. resources/read niagara://overview
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"niagara://overview"}}'
+```
+
+Ожидать `result.contents[0].mimeType=="application/json"` + `text` со счётчиками spaceCount/equipmentTypeCount/equipmentCount/standalonePointCount.
+
+### Шаг 5. prompts/list возвращает 7 prompts
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":6,"method":"prompts/list"}' | jq '.result.prompts | length'
+```
+
+Ожидать: `7`.
+
+### Шаг 6. importKnowledge source='sample'
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{
+  "name":"importKnowledge",
+  "arguments":{"source":"sample","mode":"merge"}}}'
+```
+
+Ожидать в content.text JSON `{"ok":true,"mode":"merge","added":5,"skipped":0}` (5 = ahu/rooftop/chiller/pump/fcu).
+
+### Шаг 7. createSpace + getKnowledgeSummary roundtrip
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{
+  "name":"createSpace",
+  "arguments":{"id":"test-zone","name":"Test","type":"zone"}}}'
+
+curl ... -d '{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{
+  "name":"getKnowledgeSummary","arguments":{}}}'
+```
+
+Ожидать spaceCount=1.
+
+### Шаг 8. readHistory против real point
+
+Если на станции есть точка с history extension:
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{
+  "name":"readHistory",
+  "arguments":{
+    "ord":"station:|slot:/Drivers/<your-point>",
+    "from":"2026-05-08T00:00:00Z",
+    "aggregation":"avg"}}}'
+```
+
+Ожидать numeric `avg`/`min`/`max`/`count` или массив records без агрегации.
+
+### Шаг 9. getActiveAlarms
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{
+  "name":"getActiveAlarms","arguments":{"limit":10}}}'
+```
+
+Ожидать массив из ≤10 alarm records (или пустой если на станции тихо).
+
+### Шаг 10. v0.2 endpoints НЕ сломаны
+
+Прогнать v0.2.0 runbook (выше) — initialize/tools/list/echo/DELETE — должно всё работать.
+
+### Чек-лист v0.3.0
+
+| # | Проверка | Статус |
+|---|---|---|
+| 1 | capabilities content {tools,resources,prompts} | □ |
+| 2 | tools/list = 28 | □ |
+| 3 | resources/list = 3, templates = 3 | □ |
+| 4 | resources/read overview | □ |
+| 5 | prompts/list = 7 | □ |
+| 6 | importKnowledge sample → added 5 | □ |
+| 7 | createSpace + summary roundtrip | □ |
+| 8 | readHistory против реальной точки | □ |
+| 9 | getActiveAlarms | □ |
+| 10 | v0.2.0 SSE + Streamable не сломаны | □ |
+
+Любой провал — стоп, разбор.
