@@ -51,9 +51,7 @@ jarsigner -verify -verbose -certs C:\Niagara\Niagara-4.15.3.28\modules\niagaramc
 - `signer certificate is self-signed` — ожидаемо.
 - `signatures that do not include a timestamp` — после 2027-02-28 jar потеряет валидность; для production-релиза подписать timestamping authority.
 
-**Сравнение с оригиналом**: исходный `niagaramcp-rt.jar` был подписан `BCC.RSA` (niagaramcp enterprise CA). Наша сборка подписана стандартным Niagara dev-cert (`NIAGARA4.RSA`). Это различие важно:
-- На станции с `signed-only` policy и доверенным BCC CA — наш jar **не загрузится**.
-- На станции с дефолтной dev-policy (доверяет своему `Niagara4Modules` cert) — загрузится.
+**Подпись для v0.1.0**: jar подписан стандартным Niagara dev-cert (`NIAGARA4.RSA`, см. таблицу выше). Production-deployment-у нужно перенастроить `niagara-signing` plugin на enterprise-cert (Tridium-issued или ваш организационный) — иначе на станции с `signed-only` policy модуль не загрузится. На станциях с дефолтной dev-policy (доверяет своему `Niagara4Modules` cert) jar загружается из коробки.
 
 ### 3. Проверка manifest и module.xml
 
@@ -119,9 +117,9 @@ META-INF/module.xml
 WEB-INF/web.xml             ← servlet config, в корне jar (как ожидается)
 module.palette              ← в корне jar
 niagaramcp-rt.lexicon          ← переименован из module.lexicon
-ru/bccontrol/niagaramcp/*.class       (8 файлов)
-ru/bccontrol/niagaramcp/tools/*.class (5 файлов: Echo, ListChildren, ReadPoint, WritePoint, BqlQuery + Tool interface)
-ru/bccontrol/json/*.class          (26 файлов, embedded library)
+com/niagaramcp/server/*.class       (8 файлов)
+com/niagaramcp/server/tools/*.class (6 файлов: Echo, ListChildren, ReadPoint, WritePoint, BqlQuery + Tool interface)
+com/niagaramcp/json/*.class         (24 файла, embedded library)
 ```
 
 ✓ `WEB-INF/web.xml` попал в jar (sourceSets-конфиг сработал).
@@ -178,3 +176,98 @@ ru/bccontrol/json/*.class          (26 файлов, embedded library)
 | Runtime MCP-запрос | ⚠ SKIPPED (требует станцию + клиента) |
 
 **Готов к мерджу/тегу v0.1.0** для целевой аудитории «dev-станция, тот же хост, тот же дев-сертификат». Для production-распространения — сменить сертификат подписи (см. _CODE_REVIEW.md §5).
+
+---
+
+# v0.2.0 — Streamable HTTP smoke test
+
+После применения v0.2.0-jar (та же процедура deploy + jarsigner -verify
+из §1-§2 выше) прогнать следующий runbook против рабочей station.
+Предполагается: `apiToken` уже установлен на сервисе, сервис `enabled=true`.
+
+```bash
+TOKEN=<apiToken-из-сервиса>
+HOST=https://<station-host>
+```
+
+### Шаг 1. `initialize` без `Mcp-Session-Id` → 200 + новый id
+
+```bash
+curl -sS -D - -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     "$HOST/niagaramcp/mcp" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
+```
+
+Ожидать:
+- HTTP `200 OK`
+- Response header `Mcp-Session-Id: <uuid>`
+- Body: `{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"niagaramcp","version":"1.0.0"}}}`
+
+Сохранить `Mcp-Session-Id` в переменную `SID`.
+
+### Шаг 2. `tools/list` с этим id → массив из 5 tools
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" \
+     "$HOST/niagaramcp/mcp" \
+     -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+```
+
+Ожидать `result.tools` длиной 5: `echo`, `listChildren`, `readPoint`,
+`writePoint`, `bqlQuery`. Каждый с непустым `inputSchema`.
+
+### Шаг 3. `tools/call` echo → round-trip
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" \
+     "$HOST/niagaramcp/mcp" \
+     -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"msg":"ping"}}}'
+```
+
+Ожидать `result.content[0].text == "ping"`, `result.isError == false`.
+
+### Шаг 4. `DELETE /mcp` → 204
+
+```bash
+curl -sS -i -X DELETE -H "Authorization: Bearer $TOKEN" \
+     -H "Mcp-Session-Id: $SID" \
+     "$HOST/niagaramcp/mcp"
+```
+
+Ожидать `HTTP/1.1 204 No Content` без тела.
+
+### Шаг 5. POST с уже удалённым id → 404
+
+```bash
+curl -sS -i -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" \
+     "$HOST/niagaramcp/mcp" \
+     -d '{"jsonrpc":"2.0","id":99,"method":"ping"}'
+```
+
+Ожидать `HTTP/1.1 404 Not Found` с body `Session not found or expired: <SID>`.
+
+### Шаг 6. SSE-flow (legacy) — не сломан
+
+Прогнать прежний v0.1.0 runbook (§«Что не проверено» → шаги 6-7 выше)
+для `/sse` + `/messages?sessionId=…` — должен работать как раньше,
+бит-в-бит.
+
+### Чек-лист
+
+| # | Что проверяем | Статус |
+|---|---|---|
+| 1 | initialize без id → 200 + Mcp-Session-Id | □ |
+| 2 | tools/list с id → 5 tools | □ |
+| 3 | tools/call echo → round-trip | □ |
+| 4 | DELETE → 204 | □ |
+| 5 | POST с удалённым id → 404 | □ |
+| 6 | Legacy /sse + /messages по-прежнему работают | □ |
+
+Любой провал = остановиться и зафлажить, не продолжать релиз.

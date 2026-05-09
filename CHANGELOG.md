@@ -9,9 +9,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- v0.2: `BPasswordPassword` для `apiToken`, `BAuditService` для `writePoint`/`bqlQuery`, bounded SSE-очередь.
-- v0.3: RBAC по ord-pattern; раздельные read-only / write токены.
-- v0.4: shaded `com.niagaramcp.server.json` чтобы избежать classloader-конфликтов с MCS-станциями.
+- v0.3: `BPasswordPassword` для `apiToken`; `BAuditService` записи для `writePoint`/`bqlQuery`; RBAC по ord-pattern; раздельные read-only / write токены.
+- v0.4: shaded `com.niagaramcp.json` чтобы избежать classloader-конфликтов с MCS-станциями.
+- (Streamable HTTP-related deferred items, см. ADR-0001 «Open items»)
+  - Server-initiated push messages на `GET /mcp` (сейчас вырожденный stub)
+  - Streaming response shape (`text/event-stream` на POST для прогресса tool-calls)
+  - OAuth2 resource-server profile (Bearer JWT валидация)
+
+---
+
+## [0.2.0] — 2026-05-09
+
+### Added
+
+- **Streamable HTTP MCP transport** (per spec 2025-06-18) на тех же
+  серверах рядом с легаси SSE+messages.
+  - `POST /niagaramcp/mcp` — JSON-RPC inbound. На `initialize` без
+    `Mcp-Session-Id` сервер генерирует id и возвращает в response-header.
+    Для последующих вызовов id передаётся обратно как request-header.
+  - `GET /niagaramcp/mcp` — server→client SSE-канал. Сейчас вырожденный
+    (немедленный close); push-сообщений пока нет, никакой tool их не
+    производит.
+  - `DELETE /niagaramcp/mcp` — явное закрытие сессии. Идемпотентно.
+- `Session` interface как transport-agnostic абстракция; `SseSession`
+  и `StreamableSession` реализации.
+- `StreamableSession` с **lazy idle eviction**: проверка в момент
+  `acquireStreamable()`, без background-сweeper-треда (сохраняет
+  «zero new threads» baseline из recon §10.4).
+- Property `mcpSessionIdleTimeoutSec` на `BMcpPlatformService`
+  (default `1800` = 30 минут).
+- ADR-0001 (`docs/adr/0001-streamable-http-transport.md`) фиксирует
+  все пять решений до их реализации.
+
+### Changed
+
+- `McpProtocol.PROTOCOL_VERSION` `"2024-11-05"` → `"2025-06-18"` в
+  ответе `initialize`. Capability shape (`{tools: {}}`) остаётся
+  валидной для tools-only сервера в новой спеке.
+- `McpSession` переименован в `SseSession` и теперь
+  `implements Session`. Внутренний рефактор; SSE-flow поведенчески
+  не изменился.
+- `McpProtocol.handle()` сигнатура: параметр `McpSession session` →
+  `Session session`. Метод единственно использует
+  `session.markInitialized()`, который на интерфейсе.
+
+### Fixed
+
+- README и _SMOKE_TEST: исправлены остаточные ссылки на старые пути
+  (`ru/bccontrol/...`) после v0.1.0-rebrand'а; убрана не-историческая
+  фраза про BCC.RSA в _SMOKE_TEST §2.
+
+### Compatibility
+
+- **v0.1.0 SSE-клиенты продолжают работать** на `/sse` + `/messages`
+  без изменений. Новые клиенты используют `POST/GET/DELETE /mcp` с
+  заголовком `Mcp-Session-Id`. Обе модели сосуществуют в одном
+  servlet'е.
+
+### Build
+
+- Никаких новых runtime-зависимостей. Тот же набор Niagara-плагинов,
+  тот же `compileOnly("javax.servlet:javax.servlet-api:3.1.0")`.
+- Тот же dev-cert подписи (`Niagara4Modules`).
+
+### Hardening (carried from v0.1.0)
+
+- Bounded SSE queue (`SseSession.MAX_QUEUE = 1000`) сохранён.
+- BQL cursor timeout (`BqlQueryTool.ITERATION_TIMEOUT_MS = 10s`)
+  сохранён.
+
+### Known issues (carried from v0.1.0)
+
+- `apiToken` plain `String` property; нет per-ord RBAC; нет audit-trail.
+- `bcLog` в `System.out` (не `BLog`/`Logger`).
+- См. `_CODE_REVIEW.md` (исторический, описывает архитектуру v0.1.0)
+  для деталей.
 
 ---
 
@@ -75,5 +147,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Нет audit-trail для `writePoint`/`bqlQuery`.
 - Подробности и предлагаемые mitigations — в [`_CODE_REVIEW.md`](./_CODE_REVIEW.md).
 
-[Unreleased]: https://github.com/<owner>/<repo>/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/<owner>/<repo>/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/<owner>/<repo>/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/<owner>/<repo>/releases/tag/v0.1.0

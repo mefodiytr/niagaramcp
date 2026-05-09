@@ -132,6 +132,64 @@ Connecting from an MCP client (Claude Desktop, Continue.dev, etc.) — standard 
 
 ---
 
+## Streamable HTTP transport (v0.2.0)
+
+Since v0.2.0 the module also speaks **Streamable HTTP** (MCP spec
+2025-06-18) on the same servlet, alongside the legacy SSE+messages
+transport. New clients that default to Streamable HTTP can connect
+without any server-side configuration change.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST`   | `/niagaramcp/mcp` | JSON-RPC inbound. The first call must be `initialize`; the server returns a fresh `Mcp-Session-Id` response header. Subsequent calls echo it back. |
+| `GET`    | `/niagaramcp/mcp` | Server-to-client SSE channel. Currently degenerate (immediate close) — no tool produces server-initiated push messages. |
+| `DELETE` | `/niagaramcp/mcp` | Explicit session close. Idempotent. |
+
+Session model:
+
+- The **`Mcp-Session-Id`** request/response header carries a UUID.
+- Sessions evict lazily after `mcpSessionIdleTimeoutSec` of inactivity
+  (default **30 minutes**, configurable on the service).
+- `DELETE /mcp` removes a session immediately.
+
+### Curl example
+
+```bash
+TOKEN=<your-uuid>
+
+# 1. initialize — server returns Mcp-Session-Id
+SID=$(curl -sS -D - -H "Authorization: Bearer $TOKEN" \
+       -H "Content-Type: application/json" \
+       https://station/niagaramcp/mcp \
+       -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}' \
+     | tr -d '\r' | awk -F': ' '/^Mcp-Session-Id/{print $2}')
+echo "session: $SID"
+
+# 2. tools/list
+curl -sS -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" \
+     https://station/niagaramcp/mcp \
+     -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+
+# 3. tools/call echo
+curl -sS -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" \
+     https://station/niagaramcp/mcp \
+     -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"msg":"hi"}}}'
+
+# 4. close
+curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
+     -H "Mcp-Session-Id: $SID" \
+     https://station/niagaramcp/mcp
+```
+
+The `/sse` + `/messages` transport remains fully supported; existing
+v0.1.0 clients keep working unchanged.
+
+---
+
 ## Security
 
 ### What you have
@@ -183,21 +241,24 @@ niagaramcp/
     ├── module-permissions.xml
     ├── WEB-INF/web.xml
     └── src/
-        ├── ru/bccontrol/json/         (embedded JSON parser)
-        └── ru/bccontrol/niagaramcp/
-            ├── BMcpPlatformService.java
-            ├── McpProtocol.java
-            ├── McpServlet.java
-            ├── McpSession.java
-            ├── McpSessions.java
-            ├── ToolRegistry.java
-            └── tools/
-                ├── Tool.java
-                ├── EchoTool.java
-                ├── ListChildrenTool.java
-                ├── ReadPointTool.java
-                ├── WritePointTool.java
-                └── BqlQueryTool.java
+        └── com/niagaramcp/
+            ├── json/                   (embedded JSON parser)
+            └── server/
+                ├── BMcpPlatformService.java
+                ├── McpProtocol.java
+                ├── McpServlet.java
+                ├── Session.java
+                ├── SseSession.java
+                ├── StreamableSession.java
+                ├── McpSessions.java
+                ├── ToolRegistry.java
+                └── tools/
+                    ├── Tool.java
+                    ├── EchoTool.java
+                    ├── ListChildrenTool.java
+                    ├── ReadPointTool.java
+                    ├── WritePointTool.java
+                    └── BqlQueryTool.java
 ```
 
 ---

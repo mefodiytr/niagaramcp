@@ -132,6 +132,64 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 ---
 
+## Streamable HTTP transport (v0.2.0)
+
+С версии v0.2.0 модуль также говорит **Streamable HTTP** (MCP-спека
+2025-06-18) на том же сервлете, рядом с легаси SSE+messages. Новые
+клиенты, дефолтно использующие Streamable HTTP, подключаются без
+конфигурационных изменений на сервере.
+
+| Method | Path | Назначение |
+|---|---|---|
+| `POST`   | `/niagaramcp/mcp` | JSON-RPC inbound. Первый запрос обязан быть `initialize`; сервер возвращает свежий `Mcp-Session-Id` в response-header. Последующие запросы шлют этот id обратно. |
+| `GET`    | `/niagaramcp/mcp` | Server-to-client SSE-канал. Сейчас вырожденный (немедленное закрытие) — текущие tools не генерируют push-сообщений. |
+| `DELETE` | `/niagaramcp/mcp` | Явное закрытие сессии. Идемпотентно. |
+
+Модель сессии:
+
+- Заголовок **`Mcp-Session-Id`** (request/response) несёт UUID.
+- Сессии вытесняются лениво после `mcpSessionIdleTimeoutSec` бездействия
+  (по умолчанию **30 минут**, настраивается на сервисе).
+- `DELETE /mcp` удаляет сессию сразу.
+
+### Curl-пример
+
+```bash
+TOKEN=<your-uuid>
+
+# 1. initialize — сервер вернёт Mcp-Session-Id в заголовках
+SID=$(curl -sS -D - -H "Authorization: Bearer $TOKEN" \
+       -H "Content-Type: application/json" \
+       https://station/niagaramcp/mcp \
+       -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}' \
+     | tr -d '\r' | awk -F': ' '/^Mcp-Session-Id/{print $2}')
+echo "session: $SID"
+
+# 2. tools/list
+curl -sS -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" \
+     https://station/niagaramcp/mcp \
+     -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+
+# 3. tools/call echo
+curl -sS -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" \
+     https://station/niagaramcp/mcp \
+     -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"msg":"hi"}}}'
+
+# 4. close
+curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
+     -H "Mcp-Session-Id: $SID" \
+     https://station/niagaramcp/mcp
+```
+
+`/sse` + `/messages` транспорт остаётся полностью поддержан;
+существующие v0.1.0-клиенты работают без изменений.
+
+---
+
 ## Безопасность
 
 ### Что есть
@@ -183,21 +241,24 @@ niagaramcp/
     ├── module-permissions.xml
     ├── WEB-INF/web.xml
     └── src/
-        ├── ru/bccontrol/json/         (embedded JSON parser)
-        └── ru/bccontrol/niagaramcp/
-            ├── BMcpPlatformService.java
-            ├── McpProtocol.java
-            ├── McpServlet.java
-            ├── McpSession.java
-            ├── McpSessions.java
-            ├── ToolRegistry.java
-            └── tools/
-                ├── Tool.java
-                ├── EchoTool.java
-                ├── ListChildrenTool.java
-                ├── ReadPointTool.java
-                ├── WritePointTool.java
-                └── BqlQueryTool.java
+        └── com/niagaramcp/
+            ├── json/                   (embedded JSON parser)
+            └── server/
+                ├── BMcpPlatformService.java
+                ├── McpProtocol.java
+                ├── McpServlet.java
+                ├── Session.java
+                ├── SseSession.java
+                ├── StreamableSession.java
+                ├── McpSessions.java
+                ├── ToolRegistry.java
+                └── tools/
+                    ├── Tool.java
+                    ├── EchoTool.java
+                    ├── ListChildrenTool.java
+                    ├── ReadPointTool.java
+                    ├── WritePointTool.java
+                    └── BqlQueryTool.java
 ```
 
 ---
