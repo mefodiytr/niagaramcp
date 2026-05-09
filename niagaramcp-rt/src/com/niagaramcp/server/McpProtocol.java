@@ -27,7 +27,7 @@ import com.niagaramcp.server.tools.Tool;
  */
 public final class McpProtocol {
 
-  public static final String PROTOCOL_VERSION = "2024-11-05";
+  public static final String PROTOCOL_VERSION = "2025-06-18";
   public static final String SERVER_NAME = "niagaramcp";
   public static final String SERVER_VERSION = "1.0.0";
   public static final int ERR_PARSE = -32700;
