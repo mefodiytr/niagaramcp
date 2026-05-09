@@ -46,6 +46,7 @@ import com.niagaramcp.server.tools.GetSlotsTool;
 import com.niagaramcp.server.tools.ImportKnowledgeTool;
 import com.niagaramcp.server.tools.InspectComponentTool;
 import com.niagaramcp.server.tools.ListChildrenTool;
+import com.niagaramcp.server.tools.ReadHistoryTool;
 import com.niagaramcp.server.tools.ReadPointTool;
 import com.niagaramcp.server.tools.ReloadKnowledgeTool;
 import com.niagaramcp.server.tools.Tool;
@@ -177,6 +178,8 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new FindEquipmentTool());
     r.register((Tool) new FindInSpaceTool());
     r.register((Tool) new FindPointsTool());
+    // v0.3 history
+    r.register((Tool) new ReadHistoryTool());
     REGISTRY = r;
 
     // Knowledge store — load from configured path (or default).

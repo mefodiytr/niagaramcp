@@ -28,6 +28,7 @@ dependencies {
   api(":baja")
   api(":control-rt")
   api(":web-rt")
+  api(":history-rt")
 
   // javax.servlet API (lives in $niagara_home/bin/ext as a flat-file Maven repo).
   compileOnly("javax.servlet:javax.servlet-api:3.1.0")
