@@ -40,6 +40,34 @@ public final class McpSessions {
     return s;
   }
 
+  /** Create a new Streamable HTTP session, register it, and return it. */
+  public static StreamableSession createStreamable() {
+    String id = UUID.randomUUID().toString();
+    StreamableSession s = new StreamableSession(id);
+    SESSIONS.put(id, s);
+    return s;
+  }
+
+  /**
+   * Look up a {@link StreamableSession} by id, applying lazy idle eviction.
+   * Returns {@code null} when the id is unknown, the session has been closed,
+   * the session has gone stale (older than {@code idleTimeoutMs}), or the
+   * registered session is not a {@link StreamableSession}. On a successful
+   * lookup the {@code lastSeenMs} marker is touched.
+   */
+  public static StreamableSession acquireStreamable(String sessionId, long idleTimeoutMs) {
+    Session s = SESSIONS.get(sessionId);
+    if (!(s instanceof StreamableSession)) return null;
+    StreamableSession ss = (StreamableSession) s;
+    if (ss.isClosed() || ss.isStale(idleTimeoutMs)) {
+      SESSIONS.remove(sessionId);
+      ss.close();
+      return null;
+    }
+    ss.touch();
+    return ss;
+  }
+
   /** Look up any session by id (returns the {@link Session} interface). */
   public static Session get(String sessionId) {
     return SESSIONS.get(sessionId);
