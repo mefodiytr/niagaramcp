@@ -35,12 +35,13 @@ dependencies {
   moduleTestImplementation(":test-wb")
 }
 
-// Make WEB-INF/web.xml end up at the root of the jar.
+// Make WEB-INF/web.xml and sample-knowledge.yaml end up at the root of the jar.
 sourceSets {
   main {
     resources {
       srcDir("src")
       include("WEB-INF/**")
+      include("sample-knowledge.yaml")
     }
   }
 }
