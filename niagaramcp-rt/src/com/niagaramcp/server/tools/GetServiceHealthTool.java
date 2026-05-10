@@ -22,7 +22,7 @@ public final class GetServiceHealthTool implements Tool {
     return "Health snapshot. Returns {alarmService, historyService, knowledgeFile" +
            "{readable,writable,exists}, knowledgeAuditLog{writable}, sampleResource}.";
   }
-  @Override public String schemaJson() { return "{\"type\":\"object\",\"properties\":{}}"; }
+  @Override public String schemaJson() { return ToolSchemaHelpers.emptySchema(); }
 
   @Override
   public String call(JSONObject args) throws Exception {

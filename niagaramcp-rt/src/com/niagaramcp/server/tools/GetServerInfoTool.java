@@ -30,7 +30,7 @@ public final class GetServerInfoTool implements Tool {
            "knowledgeFile {path,size,equipmentCount,lastModifiedMs}, transports, " +
            "registered tools/resources/prompts.";
   }
-  @Override public String schemaJson() { return "{\"type\":\"object\",\"properties\":{}}"; }
+  @Override public String schemaJson() { return ToolSchemaHelpers.emptySchema(); }
 
   @Override
   public String call(JSONObject args) throws Exception {

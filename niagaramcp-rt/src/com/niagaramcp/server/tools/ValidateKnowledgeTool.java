@@ -22,7 +22,7 @@ public final class ValidateKnowledgeTool implements Tool {
            "warnings (orphan refs, duplicate ids, parent cycles). Read-only.";
   }
   @Override public String schemaJson() {
-    return "{\"type\":\"object\",\"properties\":{}}";
+    return ToolSchemaHelpers.emptySchema();
   }
 
   @Override

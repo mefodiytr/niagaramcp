@@ -19,7 +19,7 @@ public final class GetOverviewTool implements Tool {
            "(Drivers, Logic, Services, etc.), and counts of children with Niagara types.";
   }
   @Override public String schemaJson() {
-    return "{\"type\":\"object\",\"properties\":{}}";
+    return ToolSchemaHelpers.emptySchema();
   }
 
   @Override
