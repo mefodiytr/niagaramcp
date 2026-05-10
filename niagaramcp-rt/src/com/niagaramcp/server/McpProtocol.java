@@ -343,16 +343,22 @@ public final class McpProtocol {
     return r;
   }
 
-  private static final class RpcException extends RuntimeException {
+  /**
+   * RPC-level exception carrying an MCP error code (one of the {@code ERR_*}
+   * constants on this class) and an optional {@code data} payload. Promoted
+   * to {@code public} in v0.5 so {@link com.niagaramcp.server.auth.UserContextGateway}
+   * can throw it from a sibling package.
+   */
+  public static final class RpcException extends RuntimeException {
     private static final long serialVersionUID = 1L;
-    final int code;
-    final JSONObject data;
+    public final int code;
+    public final JSONObject data;
 
-    RpcException(int code, String msg) {
+    public RpcException(int code, String msg) {
       this(code, msg, null);
     }
 
-    RpcException(int code, String msg, JSONObject data) {
+    public RpcException(int code, String msg, JSONObject data) {
       super(msg);
       this.code = code;
       this.data = data;
