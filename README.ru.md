@@ -335,6 +335,45 @@ JSON-ответ.
 
 ---
 
+## Workbench polish и feature dump (v0.4.1)
+
+UX-полировка перед реальным walkthrough-тестированием. Без
+breaking changes.
+
+### Read-only счётчики на Property Sheet
+
+`BMcpPlatformService` показывает 4 SUMMARY+READONLY-поля — оператор
+открывает сервис в Workbench и сразу видит runtime-статистику без
+вызова диагностического tool:
+
+| Property | Источник |
+|---|---|
+| `toolCount` | `ToolRegistry.all().size()` (36 в v0.4.1) |
+| `resourceCount` | `ResourceRegistry.all().size()` (6) |
+| `promptCount` | `PromptRegistry.all().size()` (7) |
+| `sessionCount` | `McpSessions.activeCount()` (комбинированно SSE + Streamable) |
+
+`sessionCount` обновляется немедленно при каждом create/remove
+сессии — без polling, без новых потоков. Раздельный счётчик по
+транспортам отложен до v0.5 вместе с расширением McpSessions API
+для типизированной итерации.
+
+### `getFeatureDump` tool (36-й)
+
+Статический feature-инвентарь работающего сервера — для AI-клиентов
+на discovery и операторов копирующих MCP-ответы. Два формата:
+
+- `text` (default) — человекочитаемый баннер с tools по категориям,
+  resources, prompts, transport-флагами, knowledge-статистикой,
+  sessions, health и 9 impl-defined JSON-RPC error-кодами
+  (-32001..-32009) с расшифровкой.
+- `json` — те же данные структурированно для программного потребления.
+
+Парный к v0.4 `getDiagnosticDump` (динамическое состояние) — этот
+tool про статический каталог фич.
+
+---
+
 ## Безопасность
 
 ### Что есть

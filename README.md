@@ -326,7 +326,7 @@ clients can group tools in their UI:
 | `search` | `findEquipment`, `findInSpace`, `findPoints` |
 | `history` | `readHistory` |
 | `alarms` | `getActiveAlarms`, `getAlarmHistory` |
-| `diagnostic` | `getServerInfo`, `probeOrd`, `checkKnowledgeIntegrity`, `getServiceHealth`, **`getDiagnosticDump`** |
+| `diagnostic` | `getServerInfo`, `probeOrd`, `checkKnowledgeIntegrity`, `getServiceHealth`, `getDiagnosticDump`, **`getFeatureDump`** |
 
 ### `getDiagnosticDump` tool (35th)
 
@@ -345,6 +345,45 @@ informational only.
 12 unused JSON utility classes (`XML`, `CDL`, `Cookie`, `HTTP`, etc.)
 removed from the embedded `com.niagaramcp.json` package. Jar size
 243 KB → 213 KB (−30 KB / −12%).
+
+---
+
+## Workbench polish & feature dump (v0.4.1)
+
+UX-polish patch release. No breaking changes.
+
+### Read-only count properties on the Property Sheet
+
+`BMcpPlatformService` exposes 4 SUMMARY+READONLY counters so an
+operator opening the service in Workbench sees runtime stats at a
+glance — no need to call a diagnostic tool:
+
+| Property | Source |
+|---|---|
+| `toolCount` | `ToolRegistry.all().size()` (36 in v0.4.1) |
+| `resourceCount` | `ResourceRegistry.all().size()` (6) |
+| `promptCount` | `PromptRegistry.all().size()` (7) |
+| `sessionCount` | `McpSessions.activeCount()` (combined SSE + Streamable) |
+
+`sessionCount` updates immediately on session create/remove via a
+static notification — no polling, no new threads. Per-transport
+split is deferred to v0.5 along with a typed-iterator extension to
+the `McpSessions` API.
+
+### `getFeatureDump` tool (36th)
+
+Static feature inventory of the running server, designed for AI
+clients on discovery and operators copy-pasting MCP responses. Two
+formats:
+
+- `text` (default) — human-readable banner with tools grouped by
+  category, resources, prompts, transport flags, knowledge stats,
+  sessions, health, and the 9 impl-defined JSON-RPC error codes
+  (-32001..-32009) with their meanings.
+- `json` — same data structured for programmatic consumption.
+
+Counterpart to v0.4 `getDiagnosticDump` (dynamic state) — this one
+is purely the static catalog.
 
 ---
 

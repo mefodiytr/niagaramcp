@@ -57,6 +57,7 @@ import com.niagaramcp.server.tools.FindUnmappedComponentsTool;
 import com.niagaramcp.server.tools.GetActiveAlarmsTool;
 import com.niagaramcp.server.tools.GetAlarmHistoryTool;
 import com.niagaramcp.server.tools.GetDiagnosticDumpTool;
+import com.niagaramcp.server.tools.GetFeatureDumpTool;
 import com.niagaramcp.server.tools.GetKnowledgeSummaryTool;
 import com.niagaramcp.server.tools.GetOverviewTool;
 import com.niagaramcp.server.tools.GetServerInfoTool;
@@ -96,7 +97,12 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "maxHistoryRecordsPerQuery",type = "int",     defaultValue = "10000"),
   @NiagaraProperty(name = "disabledTools",            type = "String",  defaultValue = "\"\""),
   @NiagaraProperty(name = "sseEnabled",               type = "boolean", defaultValue = "true"),
-  @NiagaraProperty(name = "streamableEnabled",        type = "boolean", defaultValue = "true")
+  @NiagaraProperty(name = "streamableEnabled",        type = "boolean", defaultValue = "true"),
+  // v0.4.1 read-only informational counts (flags=3 = SUMMARY+READONLY)
+  @NiagaraProperty(name = "toolCount",                type = "int",     defaultValue = "0", flags = 3),
+  @NiagaraProperty(name = "resourceCount",            type = "int",     defaultValue = "0", flags = 3),
+  @NiagaraProperty(name = "promptCount",              type = "int",     defaultValue = "0", flags = 3),
+  @NiagaraProperty(name = "sessionCount",             type = "int",     defaultValue = "0", flags = 3)
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -128,6 +134,23 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public int getMcpSessionIdleTimeoutSec() { return getInt(mcpSessionIdleTimeoutSec); }
   public void setMcpSessionIdleTimeoutSec(int v) { setInt(mcpSessionIdleTimeoutSec, v, null); }
 
+  /**
+   * Absolute filesystem path to the knowledge YAML file. Empty string means
+   * "use default location" (see {@link #resolveKnowledgeFile()}).
+   *
+   * <p>Stays a {@code String} (not a richer file-typed property) by
+   * deliberate choice — see v0.4.1 commit 3:
+   * <ul>
+   *   <li>No {@code BFilePath} BSimple exists in baja (4.15.3.28).
+   *   <li>{@code BAbstractFile} models files within an in-station file
+   *       space (under {@code local:|file:!}), not arbitrary OS paths.
+   *   <li>{@code BFacets} has no {@code FILE_BROWSE} key — only
+   *       {@code FIELD_EDITOR} which would require a Workbench plugin
+   *       (out of scope for this release).
+   * </ul>
+   * Workbench file-picker UX is deferred to whenever niagaramcp-wb
+   * is added.
+   */
   public static final Property knowledgeFilePath = newProperty(0, "", null);
   public String getKnowledgeFilePath() { return getString(knowledgeFilePath); }
   public void setKnowledgeFilePath(String v) { setString(knowledgeFilePath, v, null); }
@@ -159,6 +182,23 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static final Property streamableEnabled = newProperty(0, true, null);
   public boolean getStreamableEnabled() { return getBoolean(streamableEnabled); }
   public void setStreamableEnabled(boolean v) { setBoolean(streamableEnabled, v, null); }
+
+  // v0.4.1 — read-only informational counts (flags=3 = SUMMARY+READONLY)
+  public static final Property toolCount = newProperty(3, 0, null);
+  public int getToolCount() { return getInt(toolCount); }
+  public void setToolCount(int v) { setInt(toolCount, v, null); }
+
+  public static final Property resourceCount = newProperty(3, 0, null);
+  public int getResourceCount() { return getInt(resourceCount); }
+  public void setResourceCount(int v) { setInt(resourceCount, v, null); }
+
+  public static final Property promptCount = newProperty(3, 0, null);
+  public int getPromptCount() { return getInt(promptCount); }
+  public void setPromptCount(int v) { setInt(promptCount, v, null); }
+
+  public static final Property sessionCount = newProperty(3, 0, null);
+  public int getSessionCount() { return getInt(sessionCount); }
+  public void setSessionCount(int v) { setInt(sessionCount, v, null); }
 
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
@@ -241,6 +281,8 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new GetServiceHealthTool());
     // v0.4 diagnostics
     r.register((Tool) new GetDiagnosticDumpTool());
+    // v0.4.1 diagnostics — static feature inventory
+    r.register((Tool) new GetFeatureDumpTool());
     REGISTRY = r;
 
     // v0.3 — Resources
@@ -277,8 +319,35 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     KNOWLEDGE = ks;
 
     INSTANCE = this;
+
+    // v0.4.1 — populate read-only count properties for Workbench visibility.
+    // tool/resource/prompt counts are static after registration; sessionCount
+    // is refreshed on every McpSessions create/remove via refreshSessionCount().
+    setToolCount(r.all().size());
+    setResourceCount(rr.all().size());
+    setPromptCount(pr.all().size());
+    setSessionCount(McpSessions.activeCount());
+
     setStatus(getEnabled() ? "running" : "disabled");
     serviceIsRunning = true;
+  }
+
+  /**
+   * v0.4.1 — refresh the {@code sessionCount} property from
+   * {@link McpSessions#activeCount()}. Called by McpSessions on
+   * create/remove/closeAll. No-op if the service isn't started.
+   * Combined count only (per-transport split deferred to v0.5
+   * along with McpSessions API extension).
+   */
+  public static void refreshSessionCount() {
+    BMcpPlatformService s = INSTANCE;
+    if (s == null) return;
+    try {
+      s.setSessionCount(McpSessions.activeCount());
+    } catch (Exception ignored) {
+      // Setting the property may fail if the service is mid-shutdown;
+      // sessionCount becoming briefly stale is harmless.
+    }
   }
 
   @Override

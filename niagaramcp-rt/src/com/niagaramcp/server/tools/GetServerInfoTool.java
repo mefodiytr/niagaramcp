@@ -21,7 +21,7 @@ import java.io.File;
 public final class GetServerInfoTool implements Tool {
 
   /** Module version string. Read by health endpoint and serverInfo.version. */
-  public static final String NIAGARAMCP_VERSION = "0.4.0";
+  public static final String NIAGARAMCP_VERSION = "0.4.1";
 
   @Override public String name()        { return "getServerInfo"; }
   @Override public String getCategory() { return "diagnostic"; }
