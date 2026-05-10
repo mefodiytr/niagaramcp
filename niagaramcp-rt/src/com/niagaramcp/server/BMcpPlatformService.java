@@ -24,6 +24,9 @@ import javax.baja.sys.Context;
 import javax.baja.sys.Property;
 import javax.baja.sys.Sys;
 import javax.baja.sys.Type;
+import com.niagaramcp.server.audit.Audit;
+import com.niagaramcp.server.audit.BAuditHistoryServiceAdapter;
+import com.niagaramcp.server.audit.JsonlAuditWriter;
 import com.niagaramcp.server.auth.McpTags;
 import com.niagaramcp.server.auth.TokenHasher;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
@@ -269,6 +272,21 @@ public final class BMcpPlatformService extends BComponent implements BIService {
             "see samples/README.md v0.5 section)");
     }
 
+    // v0.5: install audit pipeline. JsonlAuditWriter is primary
+    // (always-on, full record). BAuditHistoryServiceAdapter is
+    // best-effort secondary — no-op when history-rt isn't installed
+    // (lightweight JACE) or the service isn't running.
+    File auditFile = new File(resolveKnowledgeFile().getParentFile(), "niagaramcp.audit.log");
+    JsonlAuditWriter jsonl = new JsonlAuditWriter(auditFile);
+    BAuditHistoryServiceAdapter wbAudit = BAuditHistoryServiceAdapter.install(
+        new BAuditHistoryServiceAdapter.WarningSink() {
+          public void warn(String msg) {
+            bcLog("BAuditHistoryService unavailable (" + msg
+                + "); JSONL remains primary at " + auditFile.getAbsolutePath());
+          }
+        });
+    Audit.install(new Audit.CompositeAuditor().add(jsonl).add(wbAudit));
+
     ToolRegistry r = new ToolRegistry();
     // v0.3.1: skip operator-disabled tools (read directly from this — INSTANCE not set yet)
     r.setDisabled(parseDisabledToolNames(getDisabledTools()));
@@ -390,6 +408,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public void serviceStopped() throws Exception {
     bcLog("serviceStopped");
     McpSessions.closeAll();
+    Audit.clear();
     REGISTRY  = null;
     RESOURCES = null;
     PROMPTS   = null;

@@ -10,6 +10,7 @@ import javax.baja.sys.Context;
 import javax.baja.user.BUser;
 import com.niagaramcp.json.JSONObject;
 import com.niagaramcp.server.McpProtocol;
+import com.niagaramcp.server.audit.Audit;
 
 /**
  * Single entry point for write-tools that mutate the Niagara station
@@ -65,25 +66,55 @@ public final class UserContextGateway {
    * structured response.
    */
   public static <T> T run(BUser user, OpDesc op, ContextAwareWork<T> work) {
+    return run(user, op, null, null, work);
+  }
+
+  /**
+   * Variant that includes audit-only metadata: {@code args} (the
+   * tool's typed params, redacted before write) and {@code sessionId}
+   * (the McpSession id for cross-correlation with the protocol log).
+   * Functionally identical to the 3-arg overload, but produces a
+   * richer audit record.
+   */
+  public static <T> T run(BUser user, OpDesc op, JSONObject args,
+                          String sessionId, ContextAwareWork<T> work) {
     if (user == null) throw new IllegalArgumentException("user must not be null");
     if (op == null)   throw new IllegalArgumentException("op must not be null");
     if (work == null) throw new IllegalArgumentException("work must not be null");
 
     Context cx = new BasicContext(user);
+    long t0 = System.currentTimeMillis();
+    String errCode = "";
+    String errMsg = "";
+    boolean ok = false;
     try {
-      return work.run(cx);
+      T result = work.run(cx);
+      ok = true;
+      return result;
     } catch (PermissionException pe) {
+      errCode = String.valueOf(McpProtocol.ERR_PERMISSION_DENIED);
+      errMsg  = pe.getMessage();
       throw new McpProtocol.RpcException(
           McpProtocol.ERR_PERMISSION_DENIED,
           "Permission denied: " + pe.getMessage(),
           buildData(user, op, pe.getMessage()));
     } catch (McpProtocol.RpcException re) {
+      errCode = String.valueOf(re.code);
+      errMsg  = re.getMessage();
       throw re;
     } catch (Exception e) {
+      errCode = String.valueOf(McpProtocol.ERR_INTERNAL);
+      errMsg  = e.getMessage();
       throw new McpProtocol.RpcException(
           McpProtocol.ERR_INTERNAL,
           "Internal: " + e.getMessage(),
           buildData(user, op, e.getMessage()));
+    } finally {
+      Audit.emit(new Audit.AuditRecord(
+          t0, user.getName(), sessionId,
+          op.tool, op.ord, op.action,
+          args, ok, System.currentTimeMillis() - t0,
+          errCode, errMsg));
     }
   }
 
