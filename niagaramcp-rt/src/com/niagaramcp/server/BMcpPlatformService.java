@@ -57,6 +57,7 @@ import com.niagaramcp.server.tools.FindUnmappedComponentsTool;
 import com.niagaramcp.server.tools.GetActiveAlarmsTool;
 import com.niagaramcp.server.tools.GetAlarmHistoryTool;
 import com.niagaramcp.server.tools.GetDiagnosticDumpTool;
+import com.niagaramcp.server.tools.GetFeatureDumpTool;
 import com.niagaramcp.server.tools.GetKnowledgeSummaryTool;
 import com.niagaramcp.server.tools.GetOverviewTool;
 import com.niagaramcp.server.tools.GetServerInfoTool;
@@ -263,6 +264,8 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new GetServiceHealthTool());
     // v0.4 diagnostics
     r.register((Tool) new GetDiagnosticDumpTool());
+    // v0.4.1 diagnostics — static feature inventory
+    r.register((Tool) new GetFeatureDumpTool());
     REGISTRY = r;
 
     // v0.3 — Resources
