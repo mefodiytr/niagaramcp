@@ -24,6 +24,7 @@ import javax.baja.sys.Context;
 import javax.baja.sys.Property;
 import javax.baja.sys.Sys;
 import javax.baja.sys.Type;
+import com.niagaramcp.server.auth.McpTags;
 import com.niagaramcp.server.auth.TokenHasher;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 import com.niagaramcp.server.prompts.QueryAlarmSummaryPrompt;
@@ -254,6 +255,18 @@ public final class BMcpPlatformService extends BComponent implements BIService {
       String fresh = TokenHasher.generateSaltBase64();
       setTokenSalt(fresh);
       bcLog("generated initial tokenSalt (length=" + fresh.length() + ")");
+    }
+
+    // v0.5: best-effort TagDictionary bootstrap for the "mcp:" namespace.
+    // Token tags work without it — this only affects Workbench TagBrowser
+    // visibility. See McpTags javadoc for why we don't auto-construct
+    // a BTagDictionary in v0.5.
+    boolean tagDictReady = McpTags.attemptDictionaryBootstrap();
+    if (!tagDictReady) {
+      bcLog("mcp: TagDictionary not registered (token tags still work; " +
+            "operator may add a BTagDictionaryFile under " +
+            "Services/TagDictionaryService for Workbench TagBrowser visibility — " +
+            "see samples/README.md v0.5 section)");
     }
 
     ToolRegistry r = new ToolRegistry();
