@@ -13,11 +13,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - v0.5: schedule-related read/write (BWeekSchedule).
 - v0.5: file watcher для knowledge.yaml; runtime-mutable `disabledTools`/`sseEnabled`/`streamableEnabled`.
 - v0.5: i18n message bundle (translate user-facing tool descriptions; v0.4 left them in Russian).
-- v0.5: per-transport session breakdown in `getDiagnosticDump` (requires McpSessions to expose typed iteration).
+- v0.5: per-transport session breakdown in `getDiagnosticDump` and the `sessionCount` Property Sheet field (requires McpSessions to expose typed iteration).
+- v0.5+: `niagaramcp-wb` subproject — Workbench file-picker for `knowledgeFilePath`, custom Property Sheet renderer for `sessionCount`/health, and PX widgets for embedding in Niagara views.
 - (Streamable HTTP-related deferred items, см. ADR-0001 «Open items»)
   - Server-initiated push messages на `GET /mcp` (сейчас вырожденный stub)
   - Streaming response shape (`text/event-stream` на POST для прогресса tool-calls)
   - OAuth2 resource-server profile (Bearer JWT валидация)
+
+---
+
+## [0.4.1] — 2026-05-10
+
+UX-polish patch release before real-world walkthrough testing. Adds
+informational visibility on the Workbench Property Sheet and a
+comprehensive feature-dump tool. No breaking changes, no schema
+changes, no permissions changes.
+
+### Added
+
+- **4 read-only count properties** on `BMcpPlatformService`
+  (flags = 3 → SUMMARY + READONLY):
+  - `toolCount` — count of registered Tools (35 → 36 in v0.4.1
+    after adding `getFeatureDump`)
+  - `resourceCount` — count of registered Resources (6)
+  - `promptCount` — count of registered Prompts (7)
+  - `sessionCount` — combined active McpSessions (SSE + Streamable;
+    refreshed on each create/remove via static notification, no
+    polling)
+  Properties surface on the Workbench Property Sheet for at-a-glance
+  health visibility without opening a tool dialog.
+- **`getFeatureDump` tool** (category `diagnostic`) — static feature
+  inventory of the running server.
+  - Args: `format` = `"text"` (default) | `"json"`.
+  - Text output: human-readable banner with tools grouped by
+    category, resources split static vs templated, prompts,
+    transport flags, knowledge stats, sessions, health, and the
+    9 impl-defined JSON-RPC error codes (-32001..-32009) with
+    meanings.
+  - JSON output: same data structured for programmatic consumption.
+  - Counterpart to v0.4 `getDiagnosticDump` (dynamic state) — this
+    one is purely the static catalog.
+- Smoke client steps 23-24: text + JSON `getFeatureDump` shape
+  verification (skip via `--skip-v041`).
+
+### Changed
+
+- `NIAGARAMCP_VERSION` constant bumped from `"0.4.0"` to `"0.4.1"`.
+  Surfaces in `getServerInfo`, `getFeatureDump`, and `/health`.
+
+### Investigated, not changed
+
+- `knowledgeFilePath` property type stays `String`. Ran a brief check
+  for `BFilePath` / `BAbstractFile` / `BFacets.FILE_BROWSE` on baja
+  4.15.3.28 — no clean BSimple type for arbitrary OS-absolute paths
+  exists, and the only file-browsing facet (`FIELD_EDITOR`) needs a
+  Workbench plugin (out of scope here). Documented in the property
+  javadoc so the next agent doesn't repeat the dig. File-picker UX
+  is deferred to a future `niagaramcp-wb` subproject.
+
+### Deferred
+
+- Per-transport `sessionCount` split (SSE vs Streamable) → v0.5
+  alongside the McpSessions API extension for typed iteration.
+- Workbench file-picker for `knowledgeFilePath` → v0.5+ (needs `-wb`
+  subproject).
 
 ---
 

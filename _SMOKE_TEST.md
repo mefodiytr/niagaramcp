@@ -610,3 +610,66 @@ py clients/python/niagaramcp_smoke.py --host <station> --token $TOKEN --insecure
 | 6 | smoke client 22 passed | □ |
 
 Любой провал — стоп.
+
+---
+
+## Runbook v0.4.1
+
+`HOST=https://<station>:<port>`, `TOKEN=<apiToken>`.
+
+### Шаг 1. Property Sheet — четыре read-only count-поля
+
+В Workbench → `Station/Services/McpPlatformService` → Property Sheet.
+Должны быть видны (read-only):
+
+| Поле | Ожидаемое значение |
+|---|---|
+| toolCount | `36` (35 v0.4 + getFeatureDump) |
+| resourceCount | `6` |
+| promptCount | `7` |
+| sessionCount | `0` сразу после restart, растёт при подключении клиентов |
+
+`sessionCount` обновляется немедленно при каждом create/remove
+сессии — без polling. Открой второй MCP-клиент → увидишь +1.
+
+### Шаг 2. tools/call getFeatureDump (text, default)
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+  "name":"getFeatureDump","arguments":{}}}'  | jq -r '.result.content[0].text'
+```
+
+Ожидать в `content[0].text` человекочитаемый дамп с заголовками
+`=== niagaramcp v0.4.1 Feature Dump ===`, секциями `Tools (36):`,
+`Resources (6):`, `Prompts (7):`, `Transports:`, `Knowledge:`,
+`Sessions:`, `Health:`, `JSON-RPC error codes (impl-defined):`.
+
+### Шаг 3. tools/call getFeatureDump format=json
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+  "name":"getFeatureDump","arguments":{"format":"json"}}}' | \
+  jq '.result.content[0].text | fromjson | keys'
+```
+
+Ожидать: `["errorCodes","health","knowledge","prompts","resources","sessionCount","tools","transports","version"]`.
+
+### Шаг 4. Smoke client passes 24 steps
+
+```bash
+py clients/python/niagaramcp_smoke.py --host <station> --token $TOKEN --insecure
+```
+
+Ожидать `Result: 24 passed, 0 failed`.
+
+### Чек-лист v0.4.1
+
+| # | Проверка | Статус |
+|---|---|---|
+| 1 | toolCount/resourceCount/promptCount видны на Property Sheet | □ |
+| 2 | sessionCount меняется при подключении клиентов | □ |
+| 3 | getFeatureDump (text) — все секции на месте | □ |
+| 4 | getFeatureDump (json) — все top-level keys | □ |
+| 5 | smoke client 24 passed | □ |
+
+Любой провал — стоп.

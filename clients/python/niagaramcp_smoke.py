@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-niagaramcp smoke test — v0.2.0 + v0.3.0 coverage.
+niagaramcp smoke test — v0.2.0 + v0.3.0 + v0.3.1 + v0.4 + v0.4.1 coverage.
 
 Standalone script — stdlib only, no pip install required.
 Verifies:
@@ -9,6 +9,9 @@ Verifies:
   - Auth (401 without Bearer, 404 for garbage session id)
   - v0.3.0 capabilities: resources/list, resources/read,
     prompts/list, tools/call getKnowledgeSummary
+  - v0.3.1 diagnostics + /health endpoint
+  - v0.4 tool category tags + getDiagnosticDump
+  - v0.4.1 getFeatureDump (text + json)
 
 Usage (PowerShell or any shell):
     py niagaramcp_smoke.py --host=192.168.1.10 --port=86 --scheme=http --token=YOUR_BEARER
@@ -18,6 +21,9 @@ Optional:
     --insecure           skip TLS cert verification (for self-signed dev cert)
     --skip-sse           skip backward compat SSE tests
     --skip-v030          skip v0.3.0-specific tests (use for v0.2.0 stations)
+    --skip-v031          skip v0.3.1 diagnostics tests
+    --skip-v04           skip v0.4 tests (categories, diagnostic dump)
+    --skip-v041          skip v0.4.1 tests (getFeatureDump)
 """
 import argparse
 import json
@@ -610,6 +616,59 @@ def run_v04_tests(client):
     return p, f
 
 
+def run_v041_tests(client):
+    """v0.4.1-specific: getFeatureDump (text + JSON formats)."""
+    p, f = 0, 0
+    print(f"\n{BOLD}=== v0.4.1 tests (getFeatureDump) ==={RESET}")
+
+    # fresh session
+    status, _, body = client.initialize()
+    if status != 200:
+        fail(f"v0.4.1 init failed (HTTP {status})")
+        return p, f + 1
+
+    step(23, "tools/call getFeatureDump (default text format)")
+    status, _, body = client.tools_call("getFeatureDump", {}, request_id=23)
+    if status == 200:
+        j = parse_json(body)
+        content = j.get("result", {}).get("content", []) if j else []
+        text = content[0].get("text") if content else None
+        if text and "Tools (" in text and "Resources (" in text \
+                and "Prompts (" in text and "Transports:" in text:
+            ok(f"text dump contains expected section headers ({len(text)} chars)")
+            p += 1
+        else:
+            fail(f"text dump missing markers; got {text[:200] if text else None!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(24, "tools/call getFeatureDump format=json")
+    status, _, body = client.tools_call("getFeatureDump", {"format": "json"},
+                                         request_id=24)
+    if status == 200:
+        j = parse_json(body)
+        content = j.get("result", {}).get("content", []) if j else []
+        text = content[0].get("text") if content else None
+        dump = parse_json(text) if text else None
+        required = {"version", "tools", "resources", "prompts", "transports",
+                    "knowledge", "sessionCount", "health", "errorCodes"}
+        if dump and required.issubset(dump.keys()):
+            ok(f"json dump has all required keys: {sorted(dump.keys())}")
+            p += 1
+        else:
+            actual = sorted(dump.keys()) if dump else None
+            fail(f"json dump missing keys; got {actual}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    client.delete()
+    return p, f
+
+
 # ─── main ─────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
@@ -629,16 +688,19 @@ def main():
                     help="skip v0.3.1 tests (diagnostics + /health)")
     ap.add_argument("--skip-v04", action="store_true",
                     help="skip v0.4 tests (categories, dump, transports list)")
+    ap.add_argument("--skip-v041", action="store_true",
+                    help="skip v0.4.1 tests (getFeatureDump text + json)")
     args = ap.parse_args()
 
     base = f"{args.scheme}://{args.host}:{args.port}/{args.module}"
-    print(f"{BOLD}niagaramcp smoke test (v0.2.0 + v0.3.0 + v0.3.1 + v0.4){RESET}")
+    print(f"{BOLD}niagaramcp smoke test (v0.2.0 + v0.3.0 + v0.3.1 + v0.4 + v0.4.1){RESET}")
     print(f"  base URL: {base}")
     print(f"  insecure: {args.insecure}")
     print(f"  skip SSE: {args.skip_sse}")
     print(f"  skip v0.3.0: {args.skip_v030}")
     print(f"  skip v0.3.1: {args.skip_v031}")
     print(f"  skip v0.4:   {args.skip_v04}")
+    print(f"  skip v0.4.1: {args.skip_v041}")
 
     client = StreamableClient(base, args.token, insecure=args.insecure)
 
@@ -661,8 +723,12 @@ def main():
     if not args.skip_v04:
         p_v4, f_v4 = run_v04_tests(client)
 
-    total_p = p_s + p_sse + p_v3 + p_v31 + p_v4
-    total_f = f_s + f_sse + f_v3 + f_v31 + f_v4
+    p_v41, f_v41 = (0, 0)
+    if not args.skip_v041:
+        p_v41, f_v41 = run_v041_tests(client)
+
+    total_p = p_s + p_sse + p_v3 + p_v31 + p_v4 + p_v41
+    total_f = f_s + f_sse + f_v3 + f_v31 + f_v4 + f_v41
     print(f"\n{BOLD}Result:{RESET} "
           f"{GREEN}{total_p} passed{RESET}, "
           f"{RED if total_f else GREY}{total_f} failed{RESET}")
