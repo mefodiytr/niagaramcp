@@ -244,6 +244,54 @@ points). AI-клиенты используют его, чтобы отвеча�
 
 ---
 
+## Diagnostics & samples (v0.3.1)
+
+v0.3.1 — patch-релиз, добавляющий диагностику и sample-данные.
+
+### Diagnostic tools (4 новых, всего 32)
+
+| Tool | Назначение |
+|---|---|
+| `getServerInfo` | Snapshot: version, uptime, sessions, knowledge-файл, transports, registered tools/resources/prompts |
+| `probeOrd {ord}` | Резолв ord — exists/type/displayName/parentOrd/slotCount + флаги isControlPoint/isWritable/isAlarmSource + hasHistoryExt/historyExtCount/historyExtIds. Garbage-ord возвращает `{exists:false}`, не ошибку. |
+| `checkKnowledgeIntegrity` | Пройти каждый ord в knowledge-модели, выдать broken refs |
+| `getServiceHealth` | Доступность Niagara-сервисов + читаемость/писаемость knowledge-файла + sample-resource |
+
+### Unauthenticated `/health` endpoint
+
+```
+GET /niagaramcp/health
+```
+
+ЕДИНСТВЕННОЕ исключение из Bearer-on-everything — для внешнего
+мониторинга (k8s/Prometheus/watchdog). Возвращает:
+
+- `200 OK` + JSON `{status:"ok", version, uptimeSeconds, knowledgeFileSize, sessionCount, healthyServices}` в норме.
+- `503 Service Unavailable` + та же форма с `status:"degraded"` если alarm/history недоступны, knowledge нечитаем, или сервис disabled.
+
+Содержит только счётчики и per-service ok/missing — никаких данных
+станции, имён оборудования, ords.
+
+### Новые свойства
+
+- `mcpProtocolVersion` (String) — переопределение MCP-protocol версии в `initialize`. Default пусто → `2025-06-18`.
+- `maxHistoryRecordsPerQuery` (int) — cap для `readHistory`. Default 10000.
+- `disabledTools` (String, comma-separated) — оператор может отключить отдельные tools при старте. Restart-required.
+
+### Standardised JSON-RPC error codes
+
+8 niagaramcp-defined кодов в impl-defined band: `-32001..-32008` для session/tool/resource/knowledge/schema/ord/history/alarm. В `error.data` теперь блок с диагностикой (`{toolName: "..."}` и подобное).
+
+### samples/ folder
+
+`samples/mall-knowledge.yaml` (синтетический ТЦ-fixture) +
+`samples/README.md`. НЕ упаковывается в jar — операторы импортят
+через `importKnowledge` чтобы попробовать queries без реального
+walkthrough. Встроенный `niagara://samples/standard-types` (5
+generic типов) из v0.3.0 — отдельная история.
+
+---
+
 ## Безопасность
 
 ### Что есть

@@ -244,6 +244,55 @@ See `_SMOKE_TEST.md` v0.3.0 section for curl-driven verification.
 
 ---
 
+## Diagnostics & samples (v0.3.1)
+
+v0.3.1 is a patch release adding diagnostic capabilities and a
+sample-data folder.
+
+### Diagnostic tools (4 new, 32 total)
+
+| Tool | Purpose |
+|---|---|
+| `getServerInfo` | Snapshot: version, uptime, sessions, knowledge file, transports, registered tools/resources/prompts |
+| `probeOrd {ord}` | Resolve an ord; returns exists/type/displayName/parentOrd/slotCount + isControlPoint/isWritable/isAlarmSource flags + hasHistoryExt + historyExtCount + historyExtIds. Garbage ords yield `{exists:false}`, never an error. |
+| `checkKnowledgeIntegrity` | Iterate every ord in the knowledge model, report broken refs |
+| `getServiceHealth` | Niagara service availability + knowledge file readability/writability + sample resource read-back |
+
+### Unauthenticated `/health` endpoint
+
+```
+GET /niagaramcp/health
+```
+
+The ONE exception to Bearer-on-every-endpoint — designed for
+external monitoring (k8s/Prometheus/watchdog probes). Returns:
+
+- `200 OK` + JSON `{status:"ok", version, uptimeSeconds, knowledgeFileSize, sessionCount, healthyServices}` in normal operation.
+- `503 Service Unavailable` + same shape with `status:"degraded"` when alarm/history service unavailable, knowledge file unreadable, or platform service disabled.
+
+Exposes only counts and per-service ok/missing booleans — no
+station data, equipment names, or ords.
+
+### New configuration properties
+
+- `mcpProtocolVersion` (String) — override the MCP protocol version advertised in `initialize`. Default: empty → `2025-06-18`.
+- `maxHistoryRecordsPerQuery` (int) — cap for `readHistory`. Default: 10000.
+- `disabledTools` (String, comma-separated) — operator can suppress specific tools at startup. Restart-required.
+
+### Standardised JSON-RPC error codes
+
+8 niagaramcp-defined codes in the JSON-RPC implementation-defined band: `-32001..-32008` covering session/tool/resource/knowledge/schema/ord/history/alarm errors. Error responses now include an `error.data` JSONObject with diagnostic context (`{toolName: "..."}`, `{uri: "..."}`, etc.).
+
+### Samples folder
+
+`samples/mall-knowledge.yaml` (synthetic shopping-mall fixture) +
+`samples/README.md` ship with the repo. NOT bundled into the jar —
+operators import via `importKnowledge` to test queries without a
+real walkthrough. The jar-bundled `niagara://samples/standard-types`
+(5 generic equipment types) from v0.3.0 remains separate.
+
+---
+
 ## Security
 
 ### What you have
