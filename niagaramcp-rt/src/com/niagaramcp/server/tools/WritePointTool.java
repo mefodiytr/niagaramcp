@@ -38,6 +38,7 @@ public final class WritePointTool implements Tool {
   public String name() {
     return "writePoint";
   }
+  @Override public String getCategory() { return "write"; }
 
   @Override
   public String description() {

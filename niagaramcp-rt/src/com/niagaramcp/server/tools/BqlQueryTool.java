@@ -38,6 +38,7 @@ public final class BqlQueryTool implements Tool {
   public String name() {
     return "bqlQuery";
   }
+  @Override public String getCategory() { return "read"; }
 
   @Override
   public String description() {

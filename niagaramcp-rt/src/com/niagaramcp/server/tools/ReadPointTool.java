@@ -32,6 +32,7 @@ public final class ReadPointTool implements Tool {
   public String name() {
     return "readPoint";
   }
+  @Override public String getCategory() { return "read"; }
 
   @Override
   public String description() {

@@ -24,6 +24,7 @@ public final class GetAlarmHistoryTool implements Tool {
   private static final long ITERATION_TIMEOUT_MS = 10_000L;
 
   @Override public String name()        { return "getAlarmHistory"; }
+  @Override public String getCategory() { return "alarms"; }
   @Override public String description() {
     return "Historical alarm records via AlarmDbConnection.timeQuery(from, to). " +
            "Optional sourceOrdPrefix filters to a slot subtree (e.g. equipment ord). " +

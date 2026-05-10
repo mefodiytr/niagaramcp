@@ -24,6 +24,7 @@ public final class GetServerInfoTool implements Tool {
   public static final String NIAGARAMCP_VERSION = "0.4.0";
 
   @Override public String name()        { return "getServerInfo"; }
+  @Override public String getCategory() { return "diagnostic"; }
   @Override public String description() {
     return "Server diagnostic snapshot — version, uptimeSeconds, sessionCount, " +
            "knowledgeFile {path,size,equipmentCount,lastModifiedMs}, transports, " +

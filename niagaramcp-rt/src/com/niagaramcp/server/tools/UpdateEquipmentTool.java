@@ -14,6 +14,7 @@ import com.niagaramcp.server.knowledge.KnowledgeStore;
 public final class UpdateEquipmentTool implements Tool {
 
   @Override public String name()        { return "updateEquipment"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Update fields on an existing equipment entry. points (if supplied) merges " +
            "into existing role->ord map; pass empty object {} to leave unchanged.";

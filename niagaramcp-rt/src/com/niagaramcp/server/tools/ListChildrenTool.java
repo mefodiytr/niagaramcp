@@ -35,6 +35,7 @@ public final class ListChildrenTool implements Tool {
   public String name() {
     return "listChildren";
   }
+  @Override public String getCategory() { return "read"; }
 
   @Override
   public String description() {

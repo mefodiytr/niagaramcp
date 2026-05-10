@@ -13,6 +13,7 @@ import com.niagaramcp.json.JSONObject;
 public final class InspectComponentTool implements Tool {
 
   @Override public String name()        { return "inspectComponent"; }
+  @Override public String getCategory() { return "walkthrough-read"; }
   @Override public String description() {
     return "Inspect a single component by ord. Returns JSON with: ord, name, displayName, " +
            "type, parentOrd, childCount.";

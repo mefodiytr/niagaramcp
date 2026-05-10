@@ -18,6 +18,7 @@ import java.util.Map;
 public final class CreateEquipmentTypeTool implements Tool {
 
   @Override public String name()        { return "createEquipmentType"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Create a new equipment_type (template for AHU/Chiller/Pump/...). " +
            "extends references another type id (cycle-checked).";

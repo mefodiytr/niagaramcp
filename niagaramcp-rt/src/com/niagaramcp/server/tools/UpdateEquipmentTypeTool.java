@@ -17,6 +17,7 @@ import java.util.Map;
 public final class UpdateEquipmentTypeTool implements Tool {
 
   @Override public String name()        { return "updateEquipmentType"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Update fields of an existing equipment_type. typical_points (if supplied) " +
            "REPLACES the existing list. To append a single role, use the dedicated " +

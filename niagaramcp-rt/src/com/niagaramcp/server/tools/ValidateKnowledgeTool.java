@@ -16,6 +16,7 @@ import java.util.List;
 public final class ValidateKnowledgeTool implements Tool {
 
   @Override public String name()        { return "validateKnowledge"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Validate the current knowledge model against schema rules. Returns a list of " +
            "warnings (orphan refs, duplicate ids, parent cycles). Read-only.";

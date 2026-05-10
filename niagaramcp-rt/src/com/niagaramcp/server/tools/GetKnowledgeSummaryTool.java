@@ -13,6 +13,7 @@ import com.niagaramcp.server.knowledge.KnowledgeStore;
 public final class GetKnowledgeSummaryTool implements Tool {
 
   @Override public String name()        { return "getKnowledgeSummary"; }
+  @Override public String getCategory() { return "management"; }
   @Override public String description() {
     return "Counts of spaces / equipment_types / equipment / standalone points; current " +
            "schema_version and storage format (yaml|json).";

@@ -20,6 +20,7 @@ public final class GetActiveAlarmsTool implements Tool {
   private static final int MAX_LIMIT = 1000;
 
   @Override public String name()        { return "getActiveAlarms"; }
+  @Override public String getCategory() { return "alarms"; }
   @Override public String description() {
     return "List currently-open alarms (off-normal/fault, not yet returned to normal). " +
            "Optional sourceOrdPrefix filters by source ord starting with that string.";

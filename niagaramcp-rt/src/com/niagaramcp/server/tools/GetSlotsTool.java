@@ -16,6 +16,7 @@ import com.niagaramcp.json.JSONObject;
 public final class GetSlotsTool implements Tool {
 
   @Override public String name()        { return "getSlots"; }
+  @Override public String getCategory() { return "walkthrough-read"; }
   @Override public String description() {
     return "List all properties (slots) of a component by ord. Returns each slot's name, " +
            "type, current value (toString), and selected facets (units, precision).";

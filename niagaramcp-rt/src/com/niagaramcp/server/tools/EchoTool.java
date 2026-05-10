@@ -24,6 +24,7 @@ public final class EchoTool implements Tool {
   public String name() {
     return "echo";
   }
+  @Override public String getCategory() { return "transport-test"; }
 
   @Override
   public String description() {

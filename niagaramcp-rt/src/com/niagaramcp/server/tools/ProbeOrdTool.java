@@ -19,6 +19,7 @@ import com.niagaramcp.json.JSONObject;
 public final class ProbeOrdTool implements Tool {
 
   @Override public String name()        { return "probeOrd"; }
+  @Override public String getCategory() { return "diagnostic"; }
   @Override public String description() {
     return "Probe a Niagara ord for existence and key attributes. Returns " +
            "{exists, type, displayName, parentOrd, slotCount, isControlPoint, " +

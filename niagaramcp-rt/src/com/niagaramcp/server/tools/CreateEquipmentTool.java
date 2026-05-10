@@ -15,6 +15,7 @@ import com.niagaramcp.server.knowledge.KnowledgeStore;
 public final class CreateEquipmentTool implements Tool {
 
   @Override public String name()        { return "createEquipment"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Create a new equipment instance (one specific AHU/Chiller/etc.). " +
            "type must reference an existing equipment_type. ord is the Niagara ord " +

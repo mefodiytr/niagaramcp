@@ -13,6 +13,7 @@ import com.niagaramcp.json.JSONObject;
 public final class GetOverviewTool implements Tool {
 
   @Override public String name()        { return "getOverview"; }
+  @Override public String getCategory() { return "walkthrough-read"; }
   @Override public String description() {
     return "Top-level station structure summary: station name, immediate top-level slots " +
            "(Drivers, Logic, Services, etc.), and counts of children with Niagara types.";

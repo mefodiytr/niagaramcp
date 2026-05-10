@@ -14,6 +14,7 @@ import com.niagaramcp.server.knowledge.KnowledgeStore;
 public final class AssignPointToEquipmentTool implements Tool {
 
   @Override public String name()        { return "assignPointToEquipment"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Assign a Niagara ord to a semantic role on an existing equipment. " +
            "Role is free-form (e.g. supply_air_temp); ord is validated for syntax only.";

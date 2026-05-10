@@ -18,6 +18,7 @@ import java.util.Map;
 public final class FindPointsTool implements Tool {
 
   @Override public String name()        { return "findPoints"; }
+  @Override public String getCategory() { return "search"; }
   @Override public String description() {
     return "Search points by role (e.g. supply_air_temp), kind (temperature/boolean/...), " +
            "or substring against equipment id/name/aliases. At least one of role/kind/text " +

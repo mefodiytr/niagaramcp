@@ -30,4 +30,12 @@ public interface Tool {
   String schemaJson();
 
   String call(JSONObject args) throws Exception;
+
+  /**
+   * @return tool category for client-side grouping in {@code tools/list}.
+   *         Default {@code "general"}; tools should override with one of:
+   *         transport-test, read, write, walkthrough-read, walkthrough-write,
+   *         management, search, history, alarms, diagnostic.
+   */
+  default String getCategory() { return "general"; }
 }

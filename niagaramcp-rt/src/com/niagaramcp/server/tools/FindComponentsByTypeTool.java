@@ -19,6 +19,7 @@ public final class FindComponentsByTypeTool implements Tool {
   private static final int MAX_LIMIT = 1000;
 
   @Override public String name()        { return "findComponentsByType"; }
+  @Override public String getCategory() { return "walkthrough-read"; }
   @Override public String description() {
     return "Find all components matching a Niagara type. typeName accepts either short " +
            "(e.g. 'BNumericPoint') or qualified (e.g. 'control:NumericPoint') form.";

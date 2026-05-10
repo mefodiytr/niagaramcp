@@ -254,6 +254,7 @@ public final class McpProtocol {
       for (Tool t : registry.all()) {
         JSONObject one = new JSONObject();
         one.put("name", t.name());
+        one.put("category", t.getCategory());            // v0.4: client-side grouping
         one.put("description", t.description());
         one.put("inputSchema", new JSONObject(new JSONTokener(t.schemaJson())));
         arr.put(one);
