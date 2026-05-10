@@ -37,6 +37,7 @@ public final class McpSessions {
     String id = UUID.randomUUID().toString();
     SseSession s = new SseSession(id);
     SESSIONS.put(id, s);
+    BMcpPlatformService.refreshSessionCount();
     return s;
   }
 
@@ -45,6 +46,7 @@ public final class McpSessions {
     String id = UUID.randomUUID().toString();
     StreamableSession s = new StreamableSession(id);
     SESSIONS.put(id, s);
+    BMcpPlatformService.refreshSessionCount();
     return s;
   }
 
@@ -62,6 +64,7 @@ public final class McpSessions {
     if (ss.isClosed() || ss.isStale(idleTimeoutMs)) {
       SESSIONS.remove(sessionId);
       ss.close();
+      BMcpPlatformService.refreshSessionCount();
       return null;
     }
     ss.touch();
@@ -77,6 +80,7 @@ public final class McpSessions {
     Session s = SESSIONS.remove(sessionId);
     if (s != null) {
       s.close();
+      BMcpPlatformService.refreshSessionCount();
     }
   }
 
@@ -85,6 +89,7 @@ public final class McpSessions {
       s.close();
     }
     SESSIONS.clear();
+    BMcpPlatformService.refreshSessionCount();
   }
 
   public static int activeCount() {
