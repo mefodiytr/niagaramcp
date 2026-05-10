@@ -4,6 +4,8 @@
  */
 package com.niagaramcp.server.tools;
 
+import javax.baja.data.BIDataValue;
+import javax.baja.sys.BString;
 import javax.baja.sys.Sys;
 import javax.baja.user.BUser;
 import javax.baja.user.BUserService;
@@ -12,6 +14,8 @@ import com.niagaramcp.server.BMcpPlatformService;
 import com.niagaramcp.server.McpProtocol;
 import com.niagaramcp.server.auth.McpTags;
 import com.niagaramcp.server.auth.TokenHasher;
+
+import java.util.Optional;
 
 /**
  * Test-only helper used by the smoke client to bind a freshly-generated
@@ -118,16 +122,46 @@ public final class SetupTestUserTool implements Tool {
     String salt = BMcpPlatformService.tokenSalt();
     String hash = TokenHasher.hash(token, salt);
 
+    boolean tagsSetReturned;
     try {
-      user.tags().set(McpTags.tokenHashTag(hash));
+      tagsSetReturned = user.tags().set(McpTags.tokenHashTag(hash));
     } catch (Exception e) {
       throw new McpProtocol.RpcException(McpProtocol.ERR_INTERNAL,
           "Failed to set mcp:tokenHash tag: " + e.getMessage(), null);
     }
 
+    // Read back IMMEDIATELY to verify persistence in-process. If the
+    // underlying Tags impl silently dropped the write (no registered
+    // dictionary, missing cx, ...), the readback will be empty even
+    // though set() returned true.
+    String readbackHash = "";
+    try {
+      Optional<BIDataValue> opt = user.tags().get(McpTags.TOKEN_HASH_ID);
+      if (opt.isPresent()) {
+        BIDataValue v = opt.get();
+        readbackHash = (v instanceof BString)
+            ? ((BString) v).getString()
+            : v.toString();
+      }
+    } catch (Exception ignored) {
+      // Readback failure leaves readbackHash="" — surfaces in result diag.
+    }
+
     JSONObject result = new JSONObject();
-    result.put("userOrd", "station:|slot:/UserService/" + username);
-    result.put("hashSet", true);
+    result.put("userOrd",            "station:|slot:/UserService/" + username);
+    result.put("hashSet",            true);
+    // Diagnostic fields (added in v0.5.1 fix-up after first real-station
+    // smoke run) — let the operator verify whether the tag write actually
+    // persisted in-process. saltLen + expectedHash + readbackHash should
+    // satisfy: readbackHash == expectedHash. If not, the Tags.set()
+    // contract on this Niagara version doesn't persist without cx /
+    // dictionary registration / .bog flush; we'll need to revise the
+    // write path before user-Bearer auth can work.
+    result.put("tagsSetReturned",    tagsSetReturned);
+    result.put("expectedHash",       hash);
+    result.put("readbackHash",       readbackHash);
+    result.put("readbackMatches",    hash.equals(readbackHash));
+    result.put("saltLen",            salt.length());
     return result.toString();
   }
 }

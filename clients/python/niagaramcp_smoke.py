@@ -632,11 +632,16 @@ def run_v041_tests(client):
     p, f = 0, 0
     print(f"\n{BOLD}=== v0.4.1 tests (getFeatureDump) ==={RESET}")
 
-    # fresh session
-    status, _, body = client.initialize()
+    # fresh session — clear any stale id from prior suites (run_v04_tests
+    # ends with client.delete() which kills the server-side session but
+    # leaves client.session_id pointing at it; sending that into
+    # initialize() yields 404).
+    client.session_id = None
+    status, hdrs, body = client.initialize()
     if status != 200:
         fail(f"v0.4.1 init failed (HTTP {status})")
         return p, f + 1
+    client.session_id = hdrs.get("Mcp-Session-Id") or hdrs.get("mcp-session-id")
 
     step(23, "tools/call getFeatureDump (default text format)")
     status, _, body = client.tools_call("getFeatureDump", {}, request_id=23)
@@ -733,6 +738,9 @@ def run_v05_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure=
         fail(f"setupTestUser RPC error {err.get('code')}: {err.get('message')}; "
              f"hint = {err.get('data', {}).get('hint', 'n/a')}")
         return p, f + 1
+    # Capture v0.5.1-fix-up diagnostic fields for use on a downstream
+    # 401 (tells us whether the tag actually persisted in-process).
+    setup_diag = j.get("result", {}).get("structuredContent", {})
     info(f"  bound mcp:tokenHash to {smoke_user}")
     client_apitoken.delete()
 
@@ -741,6 +749,14 @@ def run_v05_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure=
     status, hdrs, body = user_client.initialize()
     if status != 200:
         fail(f"user-Bearer init failed (HTTP {status}): {body[:200]!r}")
+        # If 401, dump setupTestUser diag so operator can see whether the
+        # tag was actually persisted server-side.
+        if status == 401 and setup_diag:
+            info(f"  setupTestUser diag: tagsSetReturned={setup_diag.get('tagsSetReturned')}; "
+                 f"readbackMatches={setup_diag.get('readbackMatches')}; "
+                 f"expectedHash[:16]={(setup_diag.get('expectedHash') or '')[:16]}…; "
+                 f"readbackHash[:16]={(setup_diag.get('readbackHash') or '')[:16]}…; "
+                 f"saltLen={setup_diag.get('saltLen')}")
         return p, f + 1
     user_client.session_id = hdrs.get("Mcp-Session-Id") or hdrs.get("mcp-session-id")
 
@@ -823,12 +839,19 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
         e = j["error"]
         fail(f"setupTestUser RPC error {e.get('code')}: {e.get('message')}")
         return p, f + 1
+    setup_diag = (j or {}).get("result", {}).get("structuredContent", {})
     client_apitoken.delete()
 
     user_client = StreamableClient(base, smoke_token, insecure=insecure)
     status, hdrs, body = user_client.initialize()
     if status != 200:
         fail(f"user-Bearer init failed (HTTP {status}): {body[:200]!r}")
+        if status == 401 and setup_diag:
+            info(f"  setupTestUser diag: tagsSetReturned={setup_diag.get('tagsSetReturned')}; "
+                 f"readbackMatches={setup_diag.get('readbackMatches')}; "
+                 f"expectedHash[:16]={(setup_diag.get('expectedHash') or '')[:16]}…; "
+                 f"readbackHash[:16]={(setup_diag.get('readbackHash') or '')[:16]}…; "
+                 f"saltLen={setup_diag.get('saltLen')}")
         return p, f + 1
     user_client.session_id = hdrs.get("Mcp-Session-Id") or hdrs.get("mcp-session-id")
 
