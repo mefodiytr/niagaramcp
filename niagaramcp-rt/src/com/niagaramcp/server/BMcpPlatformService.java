@@ -50,6 +50,7 @@ import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
 import com.niagaramcp.server.tools.CheckKnowledgeIntegrityTool;
 import com.niagaramcp.server.tools.CreateComponentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTool;
+import com.niagaramcp.server.tools.RemoveComponentTool;
 import com.niagaramcp.server.tools.SetupTestUserTool;
 import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
 import com.niagaramcp.server.tools.CreateSpaceTool;
@@ -352,6 +353,8 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new CreateComponentTool());
     // v0.5: test-only helper for smoke step 25 (gated by enableTestSetup)
     r.register((Tool) new SetupTestUserTool());
+    // v0.5.1: M1 write-tools tail
+    r.register((Tool) new RemoveComponentTool());
     REGISTRY = r;
 
     // v0.3 — Resources

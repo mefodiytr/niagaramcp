@@ -80,6 +80,31 @@ public final class McpProtocol {
    */
   public static final int ERR_USER_NOT_FOUND        = -32011;
 
+  // ----- niagaramcp-implementation-defined codes (v0.5.1) --------
+  /**
+   * {@code removeComponent} refused because the target has at least
+   * one inbound {@link javax.baja.sys.BLink} (another component is
+   * actively reading from a slot on this one). {@code error.data}
+   * carries {@code {ord, inboundLinkCount, sampleSourceOrds[]}}.
+   * Operator must unlink first (or call with {@code force=true}).
+   */
+  public static final int ERR_COMPONENT_HAS_INBOUND_LINKS = -32013;
+  /** Action name not found on the target component for {@code invokeAction}. */
+  public static final int ERR_ACTION_NOT_FOUND      = -32014;
+  /**
+   * Extension type cannot be added under the requested parent
+   * (parent type doesn't satisfy the extension's required-parent
+   * predicate, or extension already present and isn't multi-instance).
+   */
+  public static final int ERR_EXTENSION_NOT_APPLICABLE = -32015;
+  /**
+   * {@code linkSlots} refused because the source slot's value type is
+   * not assignable to the sink slot's type and the caller did not
+   * pass {@code convert=true}. {@code error.data} carries
+   * {@code {sourceType, sinkType}}.
+   */
+  public static final int ERR_LINK_TYPE_MISMATCH    = -32016;
+
   /**
    * Backward-compatible entry — assumes no user-Context resolved
    * (callers from pre-v0.5 code paths). Tools whose
