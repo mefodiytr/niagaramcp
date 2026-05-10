@@ -134,6 +134,23 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public int getMcpSessionIdleTimeoutSec() { return getInt(mcpSessionIdleTimeoutSec); }
   public void setMcpSessionIdleTimeoutSec(int v) { setInt(mcpSessionIdleTimeoutSec, v, null); }
 
+  /**
+   * Absolute filesystem path to the knowledge YAML file. Empty string means
+   * "use default location" (see {@link #resolveKnowledgeFile()}).
+   *
+   * <p>Stays a {@code String} (not a richer file-typed property) by
+   * deliberate choice — see v0.4.1 commit 3:
+   * <ul>
+   *   <li>No {@code BFilePath} BSimple exists in baja (4.15.3.28).
+   *   <li>{@code BAbstractFile} models files within an in-station file
+   *       space (under {@code local:|file:!}), not arbitrary OS paths.
+   *   <li>{@code BFacets} has no {@code FILE_BROWSE} key — only
+   *       {@code FIELD_EDITOR} which would require a Workbench plugin
+   *       (out of scope for this release).
+   * </ul>
+   * Workbench file-picker UX is deferred to whenever niagaramcp-wb
+   * is added.
+   */
   public static final Property knowledgeFilePath = newProperty(0, "", null);
   public String getKnowledgeFilePath() { return getString(knowledgeFilePath); }
   public void setKnowledgeFilePath(String v) { setString(knowledgeFilePath, v, null); }
