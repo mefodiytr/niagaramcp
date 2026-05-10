@@ -16,14 +16,21 @@
 package com.niagaramcp.server;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import javax.baja.alarm.BAlarmService;
+import javax.baja.history.BHistoryService;
+import javax.baja.sys.Sys;
 import javax.baja.web.servlets.UnauthenticatedServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import com.niagaramcp.json.JSONArray;
 import com.niagaramcp.json.JSONObject;
 import com.niagaramcp.json.JSONTokener;
+import com.niagaramcp.server.knowledge.KnowledgeStore;
+import com.niagaramcp.server.tools.GetServerInfoTool;
 
 /**
  * Niagara {@link UnauthenticatedServlet} that exposes
@@ -39,9 +46,13 @@ public final class McpServlet extends UnauthenticatedServlet {
 
   @Override
   protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    String path = stripSlash(req.getPathInfo());
+    // /health is the ONE exception to Bearer-on-every-endpoint: it's monitoring
+    // infrastructure used by external probes (k8s, Prometheus, watchdog scripts).
+    // Returns counts/status booleans only — no station data, no equipment names.
+    if ("health".equals(path)) { handleHealth(req, resp); return; }
     if (!checkServiceEnabled(resp)) return;
     if (!checkAuth(req, resp)) return;
-    String path = stripSlash(req.getPathInfo());
     if ("sse".equals(path)) { handleSse(req, resp); return; }
     if ("mcp".equals(path)) { handleStreamableGet(req, resp); return; }
     sendPlain(resp, 404, "Not Found: /" + path);
@@ -267,6 +278,64 @@ public final class McpServlet extends UnauthenticatedServlet {
     resp.setStatus(202);
     resp.setContentType("text/plain; charset=utf-8");
     resp.getWriter().flush();
+  }
+
+  /**
+   * GET /niagaramcp/health — unauthenticated health probe for monitoring.
+   *
+   * <p>Returns 200 with a JSON snapshot when underlying services are healthy,
+   * or 503 with the same JSON shape (status field flips to {@code "degraded"})
+   * when any of: alarm/history service missing, knowledge file unreadable,
+   * or the platform service is disabled.
+   *
+   * <p>This is the only endpoint without Bearer auth — it intentionally
+   * exposes only counts and per-service ok/missing booleans, no station data.
+   */
+  private static void handleHealth(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    JSONObject out = new JSONObject();
+    boolean healthy = true;
+
+    // Service-level
+    boolean serviceEnabled = BMcpPlatformService.isEnabled();
+    if (!serviceEnabled) healthy = false;
+
+    // Niagara service availability
+    JSONArray healthyServices = new JSONArray();
+    boolean alarmOk = svcAvailable(BAlarmService.TYPE);
+    boolean historyOk = svcAvailable(BHistoryService.TYPE);
+    if (alarmOk)   healthyServices.put("alarm");   else healthy = false;
+    if (historyOk) healthyServices.put("history"); else healthy = false;
+    healthyServices.put("web"); // we are the web servlet — alive by definition
+
+    // Knowledge file
+    long knowledgeSize = -1;
+    KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
+    if (ks != null && ks.getFile() != null) {
+      File f = ks.getFile();
+      if (f.exists()) {
+        if (!f.canRead()) healthy = false;
+        knowledgeSize = f.length();
+      }
+    }
+
+    out.put("status",  healthy ? "ok" : "degraded");
+    out.put("version", GetServerInfoTool.NIAGARAMCP_VERSION);
+    long startMs = BMcpPlatformService.getServiceStartTimeMs();
+    out.put("uptimeSeconds", startMs == 0 ? 0 : (System.currentTimeMillis() - startMs) / 1000L);
+    out.put("knowledgeFileSize", knowledgeSize);
+    out.put("sessionCount", McpSessions.activeCount());
+    out.put("healthyServices", healthyServices);
+    if (!serviceEnabled) out.put("note", "platform service disabled");
+
+    resp.setStatus(healthy ? 200 : 503);
+    resp.setContentType("application/json; charset=utf-8");
+    PrintWriter w = resp.getWriter();
+    w.write(out.toString());
+    w.flush();
+  }
+
+  private static boolean svcAvailable(javax.baja.sys.Type t) {
+    try { return Sys.getService(t) != null; } catch (Exception e) { return false; }
   }
 
   private static boolean checkServiceEnabled(HttpServletResponse resp) throws IOException {
