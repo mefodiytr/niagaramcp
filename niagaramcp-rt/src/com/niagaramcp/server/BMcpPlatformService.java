@@ -42,6 +42,7 @@ import java.io.File;
 import com.niagaramcp.server.tools.AssignPointToEquipmentTool;
 import com.niagaramcp.server.tools.BqlQueryTool;
 import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
+import com.niagaramcp.server.tools.CheckKnowledgeIntegrityTool;
 import com.niagaramcp.server.tools.CreateEquipmentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
 import com.niagaramcp.server.tools.CreateSpaceTool;
@@ -57,10 +58,13 @@ import com.niagaramcp.server.tools.GetActiveAlarmsTool;
 import com.niagaramcp.server.tools.GetAlarmHistoryTool;
 import com.niagaramcp.server.tools.GetKnowledgeSummaryTool;
 import com.niagaramcp.server.tools.GetOverviewTool;
+import com.niagaramcp.server.tools.GetServerInfoTool;
+import com.niagaramcp.server.tools.GetServiceHealthTool;
 import com.niagaramcp.server.tools.GetSlotsTool;
 import com.niagaramcp.server.tools.ImportKnowledgeTool;
 import com.niagaramcp.server.tools.InspectComponentTool;
 import com.niagaramcp.server.tools.ListChildrenTool;
+import com.niagaramcp.server.tools.ProbeOrdTool;
 import com.niagaramcp.server.tools.ReadHistoryTool;
 import com.niagaramcp.server.tools.ReadPointTool;
 import com.niagaramcp.server.tools.ReloadKnowledgeTool;
@@ -146,6 +150,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   private static volatile PromptRegistry PROMPTS = null;
   private static volatile KnowledgeStore KNOWLEDGE = null;
   private static volatile BMcpPlatformService INSTANCE = null;
+  private static volatile long SERVICE_START_TIME_MS = 0L;
 
   // ================================================================
   // BIService
@@ -160,6 +165,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public void serviceStarted() throws Exception {
     started();
     bcLog("serviceStarted");
+    SERVICE_START_TIME_MS = System.currentTimeMillis();
 
     ToolRegistry r = new ToolRegistry();
     // v0.1/0.2 baseline tools
@@ -200,6 +206,11 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     // v0.3 alarms
     r.register((Tool) new GetActiveAlarmsTool());
     r.register((Tool) new GetAlarmHistoryTool());
+    // v0.3.1 diagnostics
+    r.register((Tool) new GetServerInfoTool());
+    r.register((Tool) new ProbeOrdTool());
+    r.register((Tool) new CheckKnowledgeIntegrityTool());
+    r.register((Tool) new GetServiceHealthTool());
     REGISTRY = r;
 
     // v0.3 — Resources
@@ -329,6 +340,11 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   /** @return the prompt registry, or {@code null} if not started. */
   public static PromptRegistry getPromptRegistry() {
     return PROMPTS;
+  }
+
+  /** @return epoch ms of last serviceStarted; 0 if never started. */
+  public static long getServiceStartTimeMs() {
+    return SERVICE_START_TIME_MS;
   }
 
   /** @return current singleton service instance, or {@code null} if not started. */
