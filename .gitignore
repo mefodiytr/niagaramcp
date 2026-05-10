@@ -47,3 +47,8 @@ my-niagara.gradle*
 *.pfx
 *.keystore
 keystore.properties
+
+# Local-only operational artifacts (agent briefs, notes, drafts)
+docs/agent-briefs/
+_local/
+*.local.md
