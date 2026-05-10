@@ -190,6 +190,60 @@ v0.1.0 clients keep working unchanged.
 
 ---
 
+## Semantic layer (v0.3.0)
+
+Since v0.3.0 the module ships a **knowledge file** at
+`${niagaraUserHome}/niagaramcp/knowledge.yaml` that holds the
+semantic model of the station: spaces, equipment_types, equipment,
+standalone points. AI clients use this to answer natural-language
+questions about the station without slot-tree brute-force.
+
+### How it works
+
+1. Operator + AI run a **walkthrough** — AI inspects station
+   structure, asks questions, writes confirmed mappings into
+   knowledge.yaml.
+2. After walkthrough, AI loads spine resources
+   (`niagara://overview`, `niagara://kinds/catalog`) on connect and
+   has the full picture in context.
+3. New requests like *"what's the supply temp in parking sector E"*
+   resolve in one round-trip via `findEquipment` + `readPoint`.
+
+See `docs/concepts/01-concept.md` … `04-roadmap.md` for the design.
+
+### v0.3.0 Tools added (23 of 28 total)
+
+| Category | Tools |
+|---|---|
+| Walkthrough read | `getOverview`, `inspectComponent`, `findComponentsByType`, `getSlots` |
+| Walkthrough write | `createSpace`, `updateSpace`, `createEquipmentType`, `updateEquipmentType`, `createEquipment`, `updateEquipment`, `bulkCreateEquipment`, `assignPointToEquipment`, `createStandalonePoint`, `validateKnowledge` |
+| Knowledge mgmt | `getKnowledgeSummary`, `findUnmappedComponents`, `exportKnowledge`, `importKnowledge`, `reloadKnowledge` |
+| Search | `findEquipment`, `findInSpace`, `findPoints` |
+| History | `readHistory` (with optional client-side aggregation) |
+| Alarms | `getActiveAlarms`, `getAlarmHistory` |
+
+### v0.3.0 Resources
+
+| URI | Notes |
+|---|---|
+| `niagara://overview` | Static; station identity + counts |
+| `niagara://kinds/catalog` | Static; full equipment_types section |
+| `niagara://equipment/{id}` | Template; full equipment record |
+| `niagara://spaces/{id}` | Template; space + equipment + points within |
+| `niagara://standalone-points/{id}` | Template; sensor record |
+| `niagara://samples/standard-types` | Static; jar-bundled YAML with 5 generic types (opt-in via `importKnowledge` source='sample') |
+
+### v0.3.0 Prompts
+
+`walkthrough.new_station`, `walkthrough.continue`,
+`walkthrough.verify_types`, `walkthrough.apply_pattern`,
+`query.equipment_state`, `query.zone_comfort`,
+`query.alarm_summary`.
+
+See `_SMOKE_TEST.md` v0.3.0 section for curl-driven verification.
+
+---
+
 ## Security
 
 ### What you have

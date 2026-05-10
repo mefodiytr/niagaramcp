@@ -9,12 +9,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- v0.3: `BPasswordPassword` для `apiToken`; `BAuditService` записи для `writePoint`/`bqlQuery`; RBAC по ord-pattern; раздельные read-only / write токены.
+- v0.4: `BPasswordPassword` для `apiToken`; `BAuditService` записи для `writePoint`/`bqlQuery`/walkthrough writers; RBAC по ord-pattern; раздельные read-only / write токены.
 - v0.4: shaded `com.niagaramcp.json` чтобы избежать classloader-конфликтов с MCS-станциями.
+- v0.4: schedule-related read/write (BWeekSchedule).
+- v0.4: file watcher для knowledge.yaml (если станет нужен — пока reloadKnowledge).
 - (Streamable HTTP-related deferred items, см. ADR-0001 «Open items»)
   - Server-initiated push messages на `GET /mcp` (сейчас вырожденный stub)
   - Streaming response shape (`text/event-stream` на POST для прогресса tool-calls)
   - OAuth2 resource-server profile (Bearer JWT валидация)
+
+---
+
+## [0.3.0] — 2026-05-09
+
+### Added
+
+- **Knowledge layer**: `${niagaraUserHome}/niagaramcp/knowledge.yaml`
+  (configurable via `knowledgeFilePath`). Schema per
+  `docs/concepts/02-format.md`. Dual-format read (YAML or JSON
+  on disk both accepted), YAML default on first write. Atomic
+  saves, timestamped backups (count limited via
+  `knowledgeBackupCount`, default 5), single-file audit log.
+- **Hand-written YAML** in-tree (`com.niagaramcp.server.yaml`) — no
+  new third-party deps. Reader sniffs JSON via `{`/`[` and delegates
+  to embedded `com.niagaramcp.json`.
+- **23 new Tools** (total now 28):
+  - Walkthrough read (4): `getOverview`, `inspectComponent`,
+    `findComponentsByType`, `getSlots`.
+  - Walkthrough write basic (5): `createSpace`/`updateSpace`,
+    `createEquipmentType`/`updateEquipmentType`, `createEquipment`.
+  - Walkthrough write advanced (5): `updateEquipment`,
+    `bulkCreateEquipment`, `assignPointToEquipment`,
+    `createStandalonePoint`, `validateKnowledge`.
+  - Knowledge management (5): `getKnowledgeSummary`,
+    `findUnmappedComponents`, `exportKnowledge`,
+    `importKnowledge` (incl. `source='sample'`),
+    `reloadKnowledge`.
+  - Search (3): `findEquipment`, `findInSpace`, `findPoints`.
+  - History (1): `readHistory` via `BHistoryExt` +
+    `HistorySpaceConnection.timeQuery`. Optional client-side
+    aggregation (avg/min/max/count); 10 s iteration timeout +
+    10 000 row cap.
+  - Alarms (2): `getActiveAlarms` (open) + `getAlarmHistory`
+    (time range). Optional `sourceOrdPrefix` filter.
+- **MCP Resources** (capability `resources: {}` advertised):
+  - `niagara://overview` (static)
+  - `niagara://kinds/catalog` (static)
+  - `niagara://equipment/{id}` (template)
+  - `niagara://spaces/{id}` (template)
+  - `niagara://standalone-points/{id}` (template)
+  - `niagara://samples/standard-types` (static, jar-bundled
+    sample with 5 generic equipment_types)
+- **MCP Prompts** (capability `prompts: {}` advertised), 7 hard-coded:
+  - `walkthrough.{new_station,continue,verify_types,apply_pattern}`
+  - `query.{equipment_state,zone_comfort,alarm_summary}`
+- New `BMcpPlatformService` properties:
+  `knowledgeFilePath` (default `""` → user home),
+  `knowledgeAutoBackup` (default `true`),
+  `knowledgeBackupCount` (default `5`).
+- Bundled `sample-knowledge.yaml` resource at jar root (5 generic
+  equipment_types: ahu, rooftop, chiller, pump, fcu).
+- ADR-0002 (`docs/adr/0002-semantic-layer.md`) formalising the
+  v0.3.0 design (knowledge layer, dual-format read, no file
+  watcher, no new permissions, atomic write + audit log).
+
+### Changed
+
+- `McpProtocol.handle()` dispatches 5 new methods:
+  `resources/list`, `resources/templates/list`, `resources/read`,
+  `prompts/list`, `prompts/get`. RpcException-based error path
+  shared with tools/*.
+- `buildInitializeResult()` capability advertisement extended from
+  `{tools: {}}` to `{tools: {}, resources: {}, prompts: {}}`.
+
+### Build
+
+- `niagaramcp-rt.gradle.kts`: added Niagara module dependencies
+  `:history-rt`, `:alarm-rt`, `:bql-rt` — required at compile
+  time (recon §10 noted transitivity assumption was wrong).
+- `sourceSets.main.resources` extended to bundle
+  `sample-knowledge.yaml` alongside `WEB-INF/**`.
+
+### Compatibility
+
+- All v0.2.0 endpoints unchanged: SSE (`/sse` + `/messages`),
+  Streamable HTTP (`POST/GET/DELETE /mcp`), 5 baseline tools,
+  Bearer auth, lazy idle eviction. v0.2 clients work bit-for-bit.
+
+### Known issues (carried from v0.2.0; some now updated)
+
+- `apiToken` plain `String` property (deferred to v0.4).
+- No per-ord RBAC (deferred to v0.4).
+- No audit-trail through `BAuditService`; the per-action
+  `knowledge.audit.log` partially addresses for knowledge-mutation
+  tools, but `writePoint`/`bqlQuery` still log only to file (deferred).
+- `bcLog` to `System.out`, not `BLog` (deferred).
+- Embedded `com.niagaramcp.json` may collide with same-FQN classes
+  in MCS-style stations (shading deferred).
 
 ---
 
@@ -147,6 +238,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Нет audit-trail для `writePoint`/`bqlQuery`.
 - Подробности и предлагаемые mitigations — в [`_CODE_REVIEW.md`](./_CODE_REVIEW.md).
 
-[Unreleased]: https://github.com/<owner>/<repo>/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/<owner>/<repo>/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/<owner>/<repo>/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/<owner>/<repo>/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/<owner>/<repo>/releases/tag/v0.1.0

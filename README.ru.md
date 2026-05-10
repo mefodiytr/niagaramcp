@@ -190,6 +190,60 @@ curl -sS -X DELETE -H "Authorization: Bearer $TOKEN" \
 
 ---
 
+## Semantic layer (v0.3.0)
+
+С версии v0.3.0 модуль ведёт **knowledge-файл** в
+`${niagaraUserHome}/niagaramcp/knowledge.yaml` — семантическая
+модель станции (spaces, equipment_types, equipment, standalone
+points). AI-клиенты используют его, чтобы отвечать на естественные
+вопросы про станцию без brute-force обхода slot-tree.
+
+### Как это работает
+
+1. Оператор + AI запускают **walkthrough** — AI смотрит структуру
+   станции, задаёт уточняющие вопросы, пишет подтверждённые
+   соответствия в knowledge.yaml.
+2. После walkthrough'а AI грузит spine-resources
+   (`niagara://overview`, `niagara://kinds/catalog`) при старте и
+   имеет полную карту в контексте.
+3. Запросы вроде *«какая supply temp на паркинге сектор E»*
+   решаются за один round-trip через `findEquipment` + `readPoint`.
+
+См. `docs/concepts/01-concept.md` … `04-roadmap.md` для деталей.
+
+### Tools (23 новых, всего 28)
+
+| Категория | Tools |
+|---|---|
+| Walkthrough read | `getOverview`, `inspectComponent`, `findComponentsByType`, `getSlots` |
+| Walkthrough write | `createSpace`, `updateSpace`, `createEquipmentType`, `updateEquipmentType`, `createEquipment`, `updateEquipment`, `bulkCreateEquipment`, `assignPointToEquipment`, `createStandalonePoint`, `validateKnowledge` |
+| Knowledge mgmt | `getKnowledgeSummary`, `findUnmappedComponents`, `exportKnowledge`, `importKnowledge`, `reloadKnowledge` |
+| Search | `findEquipment`, `findInSpace`, `findPoints` |
+| History | `readHistory` (с опциональной client-side агрегацией) |
+| Alarms | `getActiveAlarms`, `getAlarmHistory` |
+
+### Resources
+
+| URI | Описание |
+|---|---|
+| `niagara://overview` | static; идентификация станции + счётчики |
+| `niagara://kinds/catalog` | static; полный equipment_types |
+| `niagara://equipment/{id}` | template; запись equipment |
+| `niagara://spaces/{id}` | template; space + содержимое |
+| `niagara://standalone-points/{id}` | template; одиночный sensor |
+| `niagara://samples/standard-types` | static; в jar 5 базовых типов (opt-in через `importKnowledge` source='sample') |
+
+### Prompts
+
+`walkthrough.new_station`, `walkthrough.continue`,
+`walkthrough.verify_types`, `walkthrough.apply_pattern`,
+`query.equipment_state`, `query.zone_comfort`,
+`query.alarm_summary`.
+
+См. `_SMOKE_TEST.md` секцию v0.3.0 для curl-проверки.
+
+---
+
 ## Безопасность
 
 ### Что есть

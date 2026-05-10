@@ -1,0 +1,96 @@
+# niagaramcp sample knowledge file — generic equipment-type catalogue.
+#
+# Operators can opt-in to importing this via the importKnowledge tool,
+# or via the niagara://samples/standard-types resource. Customise to
+# match local terminology after import.
+
+schema_version: 1
+station:
+  id: sample
+  name: "Sample station"
+  description: "Standard equipment-type catalogue"
+  generated_by: "niagaramcp-bundled-sample"
+
+spaces: []
+
+equipment_types:
+  - id: ahu
+    name: "Air Handling Unit"
+    aliases: ["AHU", "вентиляционная установка", "ВУ", "приточка"]
+    description: "Air handling unit (supply/return ventilation)"
+    typical_points:
+      - role: supply_air_temp
+        kind: temperature
+        slot_patterns: ["SAT", "SupplyTemp", "T_Supply"]
+        required: true
+      - role: return_air_temp
+        kind: temperature
+        slot_patterns: ["RAT", "ReturnTemp", "T_Return"]
+      - role: supply_fan_status
+        kind: boolean
+        slot_patterns: ["FanStatus", "FanOn", "F_Stat"]
+        required: true
+      - role: supply_fan_speed
+        kind: percent
+        slot_patterns: ["FanSpeed", "F_Speed"]
+      - role: cooling_demand
+        kind: percent
+
+  - id: rooftop
+    name: "Rooftop Unit"
+    aliases: ["RTU", "руфтоп", "крышник"]
+    extends: ahu
+    description: "AHU with integrated compressor, mounted on roof"
+    typical_points:
+      - role: compressor_1_status
+        kind: boolean
+        slot_patterns: ["C1_Stat", "Comp1"]
+      - role: compressor_2_status
+        kind: boolean
+        slot_patterns: ["C2_Stat", "Comp2"]
+
+  - id: chiller
+    name: "Chiller"
+    aliases: ["чиллер", "холодильная машина", "ХМ"]
+    typical_points:
+      - role: chilled_water_supply_temp
+        kind: temperature
+        slot_patterns: ["CHWS_T", "CWS_T"]
+        required: true
+      - role: chilled_water_return_temp
+        kind: temperature
+        slot_patterns: ["CHWR_T", "CWR_T"]
+      - role: capacity
+        kind: percent
+      - role: status
+        kind: boolean
+        required: true
+
+  - id: pump
+    name: "Pump"
+    aliases: ["насос"]
+    typical_points:
+      - role: status
+        kind: boolean
+        required: true
+      - role: speed
+        kind: percent
+      - role: flow
+        kind: flow
+
+  - id: fcu
+    name: "Fan Coil Unit"
+    aliases: ["FCU", "фанкойл"]
+    typical_points:
+      - role: room_temp
+        kind: temperature
+        required: true
+      - role: setpoint
+        kind: temperature
+      - role: fan_speed
+        kind: enum
+      - role: valve_position
+        kind: percent
+
+equipment: []
+points: []

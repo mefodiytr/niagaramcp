@@ -28,6 +28,9 @@ dependencies {
   api(":baja")
   api(":control-rt")
   api(":web-rt")
+  api(":history-rt")
+  api(":alarm-rt")
+  api(":bql-rt")
 
   // javax.servlet API (lives in $niagara_home/bin/ext as a flat-file Maven repo).
   compileOnly("javax.servlet:javax.servlet-api:3.1.0")
@@ -35,12 +38,13 @@ dependencies {
   moduleTestImplementation(":test-wb")
 }
 
-// Make WEB-INF/web.xml end up at the root of the jar.
+// Make WEB-INF/web.xml and sample-knowledge.yaml end up at the root of the jar.
 sourceSets {
   main {
     resources {
       srcDir("src")
       include("WEB-INF/**")
+      include("sample-knowledge.yaml")
     }
   }
 }
