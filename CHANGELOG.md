@@ -13,10 +13,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - v0.4: shaded `com.niagaramcp.json` чтобы избежать classloader-конфликтов с MCS-станциями.
 - v0.4: schedule-related read/write (BWeekSchedule).
 - v0.4: file watcher для knowledge.yaml (если станет нужен — пока reloadKnowledge).
+- v0.4: runtime-mutable `disabledTools` (в v0.3.1 — restart-required).
 - (Streamable HTTP-related deferred items, см. ADR-0001 «Open items»)
   - Server-initiated push messages на `GET /mcp` (сейчас вырожденный stub)
   - Streaming response shape (`text/event-stream` на POST для прогресса tool-calls)
   - OAuth2 resource-server profile (Bearer JWT валидация)
+
+---
+
+## [0.3.1] — 2026-05-10
+
+Patch release: diagnostic capabilities + sample data + small DX
+improvements. No breaking changes; all v0.3.0 endpoints unchanged.
+
+### Added
+
+- **4 diagnostic tools** (registered in `BMcpPlatformService`,
+  `tools/list` count: 28 → 32):
+  - `getServerInfo` — version, uptimeSeconds, sessionCount,
+    knowledgeFile{path,size,equipmentCount,lastModifiedMs,exists},
+    transports list, registered tools/resources/prompts.
+  - `probeOrd {ord}` — exists/type/displayName/parentOrd/slotCount,
+    isControlPoint/isWritable/isAlarmSource flags,
+    hasHistoryExt + historyExtCount + historyExtIds. Unresolvable
+    ords return `{exists: false}` not error.
+  - `checkKnowledgeIntegrity` — iterate every ord in the model,
+    resolve via `BOrd.make().get()`; report broken refs by
+    equipment/role/standalonePoint with reason.
+  - `getServiceHealth` — Niagara service availability
+    (alarm/history) + knowledge file/audit log readable+writable +
+    sample resource read-back.
+- **HTTP `GET /niagaramcp/health` endpoint** — unauthenticated
+  monitoring probe (the ONE exception to Bearer-on-everything).
+  Returns 200 with status/version/uptimeSeconds/knowledgeFileSize/
+  sessionCount/healthyServices, OR 503 if any of: alarm/history
+  service missing, knowledge file unreadable, platform service
+  disabled. Exposes only counts and per-service ok/missing
+  booleans — no station data.
+- **3 new properties on `BMcpPlatformService`**:
+  - `mcpProtocolVersion` (String, default `""`) — override the MCP
+    protocol version advertised in `initialize`. Empty = use
+    built-in default `2025-06-18`.
+  - `maxHistoryRecordsPerQuery` (int, default `10000`) —
+    `ReadHistoryTool` caps user-supplied `limit` at
+    `min(MAX_LIMIT, property)`.
+  - `disabledTools` (String, comma-separated, default `""`) —
+    operator can suppress specific tools at startup. Matching is
+    case-insensitive. Restart-required (no runtime reconfig in
+    v0.3.1; v0.4 may add).
+- **Standardised JSON-RPC error codes** — 8 new niagaramcp-defined
+  codes in the JSON-RPC 2.0 implementation-defined band
+  (-32001..-32008): `ERR_SESSION_NOT_FOUND`, `ERR_TOOL_NOT_FOUND`,
+  `ERR_RESOURCE_NOT_FOUND`, `ERR_KNOWLEDGE_UNREADABLE`,
+  `ERR_SCHEMA_VALIDATION`, `ERR_ORD_NOT_RESOLVABLE`,
+  `ERR_HISTORY_EXT_MISSING`, `ERR_ALARM_SERVICE_MISSING`. Existing
+  dispatch sites (Unknown tool/resource/prompt/method) now emit
+  `error.data` JSONObject alongside the message
+  (`{toolName|uri|promptName|method}`).
+- **`samples/` folder** with `mall-knowledge.yaml` (synthetic
+  shopping-mall knowledge fixture, ~300 lines) + `samples/README.md`.
+  NOT bundled into the jar — pure documentation/test fixture for
+  operator import via the `importKnowledge` tool.
+- **Smoke client extended** (`clients/python/niagaramcp_smoke.py`) —
+  5 new steps (14-19) covering all v0.3.1 additions plus
+  `--skip-v031` flag. Total numbered steps now 19.
+
+### Changed
+
+- `McpProtocol.PROTOCOL_VERSION` constant kept as default fallback,
+  but `buildInitializeResult()` now reads from
+  `BMcpPlatformService.mcpProtocolVersion()` so operator override
+  works.
+- `ToolRegistry.register()` now consults `setDisabled()` set; tools
+  whose name is in the set are silently skipped.
+- `error()` helper signature gains `data` parameter; backward-compat
+  wrapper retained for existing call sites.
+
+### Fixed
+
+- bajadoc/javadoc encoding: added `tasks.withType<Javadoc> { options.encoding = "UTF-8" }`
+  to `niagaramcp-rt.gradle.kts`. Prevents "unmappable character"
+  failures on Windows JDKs whose `file.encoding` is not UTF-8 when
+  source files contain Cyrillic (tool descriptions are partially in
+  Russian).
+
+### Removed
+
+(none)
+
+### Deprecated
+
+(none)
+
+### Compatibility
+
+- v0.3.0 (and v0.2.0/v0.1.0) endpoints unchanged.
+- All 28 v0.3.0 tools continue to work bit-for-bit.
+- Default protocol version still `2025-06-18`.
+- New `/health` is a NEW endpoint, no existing path overlaps.
 
 ---
 
@@ -238,7 +332,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Нет audit-trail для `writePoint`/`bqlQuery`.
 - Подробности и предлагаемые mitigations — в [`_CODE_REVIEW.md`](./_CODE_REVIEW.md).
 
-[Unreleased]: https://github.com/<owner>/<repo>/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/<owner>/<repo>/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/<owner>/<repo>/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/<owner>/<repo>/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/<owner>/<repo>/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/<owner>/<repo>/releases/tag/v0.1.0

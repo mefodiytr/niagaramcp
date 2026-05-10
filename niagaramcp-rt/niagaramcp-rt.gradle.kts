@@ -54,3 +54,9 @@ tasks.named<Bajadoc>("bajadoc") {
   includePackage("com.niagaramcp.server.tools")
   includePackage("com.niagaramcp.json")
 }
+
+// UTF-8 encoding for any plain Javadoc task (avoids native-encoding crashes
+// on Windows JDKs when source contains Cyrillic — happens in tool descriptions).
+tasks.withType<Javadoc> {
+  options.encoding = "UTF-8"
+}

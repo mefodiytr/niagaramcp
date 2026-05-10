@@ -42,6 +42,7 @@ import java.io.File;
 import com.niagaramcp.server.tools.AssignPointToEquipmentTool;
 import com.niagaramcp.server.tools.BqlQueryTool;
 import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
+import com.niagaramcp.server.tools.CheckKnowledgeIntegrityTool;
 import com.niagaramcp.server.tools.CreateEquipmentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
 import com.niagaramcp.server.tools.CreateSpaceTool;
@@ -57,10 +58,13 @@ import com.niagaramcp.server.tools.GetActiveAlarmsTool;
 import com.niagaramcp.server.tools.GetAlarmHistoryTool;
 import com.niagaramcp.server.tools.GetKnowledgeSummaryTool;
 import com.niagaramcp.server.tools.GetOverviewTool;
+import com.niagaramcp.server.tools.GetServerInfoTool;
+import com.niagaramcp.server.tools.GetServiceHealthTool;
 import com.niagaramcp.server.tools.GetSlotsTool;
 import com.niagaramcp.server.tools.ImportKnowledgeTool;
 import com.niagaramcp.server.tools.InspectComponentTool;
 import com.niagaramcp.server.tools.ListChildrenTool;
+import com.niagaramcp.server.tools.ProbeOrdTool;
 import com.niagaramcp.server.tools.ReadHistoryTool;
 import com.niagaramcp.server.tools.ReadPointTool;
 import com.niagaramcp.server.tools.ReloadKnowledgeTool;
@@ -86,7 +90,10 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "mcpSessionIdleTimeoutSec", type = "int",     defaultValue = "1800"),
   @NiagaraProperty(name = "knowledgeFilePath",        type = "String",  defaultValue = "\"\""),
   @NiagaraProperty(name = "knowledgeAutoBackup",      type = "boolean", defaultValue = "true"),
-  @NiagaraProperty(name = "knowledgeBackupCount",     type = "int",     defaultValue = "5")
+  @NiagaraProperty(name = "knowledgeBackupCount",     type = "int",     defaultValue = "5"),
+  @NiagaraProperty(name = "mcpProtocolVersion",       type = "String",  defaultValue = "\"\""),
+  @NiagaraProperty(name = "maxHistoryRecordsPerQuery",type = "int",     defaultValue = "10000"),
+  @NiagaraProperty(name = "disabledTools",            type = "String",  defaultValue = "\"\"")
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -130,6 +137,18 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public int getKnowledgeBackupCount() { return getInt(knowledgeBackupCount); }
   public void setKnowledgeBackupCount(int v) { setInt(knowledgeBackupCount, v, null); }
 
+  public static final Property mcpProtocolVersion = newProperty(0, "", null);
+  public String getMcpProtocolVersion() { return getString(mcpProtocolVersion); }
+  public void setMcpProtocolVersion(String v) { setString(mcpProtocolVersion, v, null); }
+
+  public static final Property maxHistoryRecordsPerQuery = newProperty(0, 10000, null);
+  public int getMaxHistoryRecordsPerQuery() { return getInt(maxHistoryRecordsPerQuery); }
+  public void setMaxHistoryRecordsPerQuery(int v) { setInt(maxHistoryRecordsPerQuery, v, null); }
+
+  public static final Property disabledTools = newProperty(0, "", null);
+  public String getDisabledTools() { return getString(disabledTools); }
+  public void setDisabledTools(String v) { setString(disabledTools, v, null); }
+
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
 
@@ -146,6 +165,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   private static volatile PromptRegistry PROMPTS = null;
   private static volatile KnowledgeStore KNOWLEDGE = null;
   private static volatile BMcpPlatformService INSTANCE = null;
+  private static volatile long SERVICE_START_TIME_MS = 0L;
 
   // ================================================================
   // BIService
@@ -160,8 +180,11 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public void serviceStarted() throws Exception {
     started();
     bcLog("serviceStarted");
+    SERVICE_START_TIME_MS = System.currentTimeMillis();
 
     ToolRegistry r = new ToolRegistry();
+    // v0.3.1: skip operator-disabled tools (read directly from this — INSTANCE not set yet)
+    r.setDisabled(parseDisabledToolNames(getDisabledTools()));
     // v0.1/0.2 baseline tools
     r.register((Tool) new EchoTool());
     r.register((Tool) new ListChildrenTool());
@@ -200,6 +223,11 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     // v0.3 alarms
     r.register((Tool) new GetActiveAlarmsTool());
     r.register((Tool) new GetAlarmHistoryTool());
+    // v0.3.1 diagnostics
+    r.register((Tool) new GetServerInfoTool());
+    r.register((Tool) new ProbeOrdTool());
+    r.register((Tool) new CheckKnowledgeIntegrityTool());
+    r.register((Tool) new GetServiceHealthTool());
     REGISTRY = r;
 
     // v0.3 — Resources
@@ -329,6 +357,49 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   /** @return the prompt registry, or {@code null} if not started. */
   public static PromptRegistry getPromptRegistry() {
     return PROMPTS;
+  }
+
+  /** @return epoch ms of last serviceStarted; 0 if never started. */
+  public static long getServiceStartTimeMs() {
+    return SERVICE_START_TIME_MS;
+  }
+
+  /**
+   * @return configured MCP protocol version, falling back to the default
+   *         {@code "2025-06-18"} when the property is empty / instance not started.
+   */
+  public static String mcpProtocolVersion() {
+    BMcpPlatformService s = INSTANCE;
+    if (s == null) return "2025-06-18";
+    String v = s.getMcpProtocolVersion();
+    return (v == null || v.isEmpty()) ? "2025-06-18" : v;
+  }
+
+  /** @return configured max history records per query (default 10000). */
+  public static int maxHistoryRecordsPerQuery() {
+    BMcpPlatformService s = INSTANCE;
+    return (s == null) ? 10000 : s.getMaxHistoryRecordsPerQuery();
+  }
+
+  /**
+   * @return set of disabled tool names from the {@code disabledTools} property
+   *         (comma-separated, trimmed, lowercased). Empty set when unset.
+   */
+  public static java.util.Set<String> disabledToolNames() {
+    BMcpPlatformService s = INSTANCE;
+    return parseDisabledToolNames(s == null ? "" : s.getDisabledTools());
+  }
+
+  /** Parse the raw comma-separated property text into a normalised set. */
+  static java.util.Set<String> parseDisabledToolNames(String raw) {
+    java.util.Set<String> set = new java.util.HashSet<String>();
+    if (raw == null || raw.isEmpty()) return set;
+    String[] parts = raw.split(",");
+    for (int i = 0; i < parts.length; i++) {
+      String t = parts[i].trim();
+      if (!t.isEmpty()) set.add(t.toLowerCase(java.util.Locale.ROOT));
+    }
+    return set;
   }
 
   /** @return current singleton service instance, or {@code null} if not started. */

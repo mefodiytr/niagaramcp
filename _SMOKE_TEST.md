@@ -398,3 +398,131 @@ curl ... -d '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{
 | 10 | v0.2.0 SSE + Streamable не сломаны | □ |
 
 Любой провал — стоп, разбор.
+
+---
+
+# v0.3.1 — Diagnostics + /health smoke test
+
+После v0.3.1 jar deploy. Использует тот же `$SID` flow что и v0.3.0.
+
+### Шаг 1. tools/list = 32
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -H "Mcp-Session-Id: $SID" "$HOST/niagaramcp/mcp" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools | length'
+```
+
+Ожидать: `32` (28 v0.3.0 + 4 v0.3.1 diagnostics).
+
+### Шаг 2. tools/call getServerInfo
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
+  "name":"getServerInfo","arguments":{}}}'
+```
+
+Ожидать в `content[0].text` JSON с полями `version` (`"0.3.1"`),
+`uptimeSeconds`, `sessionCount`, `knowledgeFile{path,size,equipmentCount,…}`,
+`transports` (`["sse","streamable-http"]`), `tools[…]`,
+`resources[…]`, `prompts[…]`.
+
+### Шаг 3. tools/call probeOrd valid
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+  "name":"probeOrd",
+  "arguments":{"ord":"station:|slot:/"}}}'
+```
+
+Ожидать `exists: true`, `type` (например `baja:Station`), `slotCount > 0`.
+
+### Шаг 4. tools/call probeOrd garbage
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{
+  "name":"probeOrd",
+  "arguments":{"ord":"station:|slot:/__no_such_thing__"}}}'
+```
+
+Ожидать `result.isError == false`, `content[0].text` содержит
+`"exists": false` (graceful, без RPC error).
+
+### Шаг 5. tools/call checkKnowledgeIntegrity
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{
+  "name":"checkKnowledgeIntegrity","arguments":{}}}'
+```
+
+Ожидать поля `totalRefs`, `validRefs`, `brokenCount`, `brokenRefs[]`.
+На свежей станции c пустым knowledge — `totalRefs: 0`.
+
+### Шаг 6. tools/call getServiceHealth
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{
+  "name":"getServiceHealth","arguments":{}}}'
+```
+
+Ожидать `alarmService: "ok"`, `historyService: "ok"`,
+`knowledgeFile{readable, writable, exists}`, `sampleResource: "ok"`.
+
+### Шаг 7. GET /niagaramcp/health (БЕЗ авторизации)
+
+```bash
+curl -sS -i "$HOST/niagaramcp/health"
+```
+
+Ожидать `HTTP/1.1 200 OK` (или `503` при degraded), `Content-Type: application/json`,
+body c полями `status` (`"ok"` или `"degraded"`), `version`, `uptimeSeconds`,
+`knowledgeFileSize`, `sessionCount`, `healthyServices`.
+
+**Важно**: НЕ должен требовать `Authorization` header.
+
+### Шаг 8. JSON-RPC error data block
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{
+  "name":"nonexistent_tool","arguments":{}}}'
+```
+
+Ожидать `error.code: -32002` (ERR_TOOL_NOT_FOUND),
+`error.data.toolName: "nonexistent_tool"`.
+
+### Шаг 9. disabledTools property
+
+В Workbench установить `disabledTools = "echo"`, рестарт сервиса.
+Затем:
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":8,"method":"tools/list"}' | jq '.result.tools | length'
+```
+
+Ожидать `31` (echo исключён). После `tools/call echo` ожидать
+`error.code: -32002`. Вернуть `disabledTools = ""`, restart.
+
+### Шаг 10. Smoke client passes 19 steps
+
+```bash
+py clients/python/niagaramcp_smoke.py --host <station> --token $TOKEN --insecure
+```
+
+Ожидать `Result: 19 passed, 0 failed` в финальной строке.
+
+### Чек-лист v0.3.1
+
+| # | Проверка | Статус |
+|---|---|---|
+| 1 | tools/list = 32 | □ |
+| 2 | getServerInfo полный JSON | □ |
+| 3 | probeOrd valid → exists:true | □ |
+| 4 | probeOrd garbage → exists:false (no error) | □ |
+| 5 | checkKnowledgeIntegrity shape | □ |
+| 6 | getServiceHealth ok statuses | □ |
+| 7 | /health без auth → 200 | □ |
+| 8 | error.data block в RPC ошибках | □ |
+| 9 | disabledTools работает | □ |
+| 10 | smoke client 19 passed | □ |
+
+Любой провал — стоп.
