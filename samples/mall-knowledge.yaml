@@ -1,0 +1,365 @@
+# Sample knowledge for a shopping mall.
+#
+# Synthetic ords — replace with real ords from your station before
+# importing on a real environment. The structure illustrates the
+# v0.3.0 schema with a multi-floor topology, multiple equipment
+# kinds, and Russian-language aliases that the AI walkthrough
+# layer would typically produce.
+#
+# Load with the importKnowledge tool:
+#   importKnowledge(source='inline', mode='replace', content='<paste this file>')
+# or with mode='merge' to combine with an existing knowledge file.
+
+schema_version: 1
+
+spaces:
+  - id: building
+    path: building
+    name: Здание ТРЦ
+    description: Корневое пространство, объединяет все этажи и технические зоны.
+
+  - id: floor.0
+    path: building.floor.0
+    parent: building
+    name: Цокольный этаж
+    description: Парковка, складские помещения, технические комнаты.
+
+  - id: floor.1
+    path: building.floor.1
+    parent: building
+    name: Первый этаж
+    description: Главный вход, продуктовый якорь, фуд-корт.
+
+  - id: floor.2
+    path: building.floor.2
+    parent: building
+    name: Второй этаж
+    description: Fashion retail, кинотеатр, развлечения.
+
+  - id: floor.3
+    path: building.floor.3
+    parent: building
+    name: Третий этаж
+    description: Офисная часть, конференц-зал.
+
+  - id: floor.0.parking_a
+    path: building.floor.0.parking_a
+    parent: floor.0
+    name: Паркинг сектор A
+    aliases: ["паркинг A", "parking sector A"]
+
+  - id: floor.0.parking_b
+    path: building.floor.0.parking_b
+    parent: floor.0
+    name: Паркинг сектор B
+    aliases: ["паркинг B", "parking sector B"]
+
+  - id: floor.0.tech_room
+    path: building.floor.0.tech_room
+    parent: floor.0
+    name: Техническая комната
+
+  - id: floor.1.lobby
+    path: building.floor.1.lobby
+    parent: floor.1
+    name: Главный вход / лобби
+
+  - id: floor.1.foodcourt
+    path: building.floor.1.foodcourt
+    parent: floor.1
+    name: Фуд-корт
+
+  - id: floor.2.cinema
+    path: building.floor.2.cinema
+    parent: floor.2
+    name: Кинотеатр
+
+  - id: floor.3.offices
+    path: building.floor.3.offices
+    parent: floor.3
+    name: Офисные помещения
+
+equipment_types:
+  - id: ahu
+    name: Приточно-вытяжная установка
+    description: Базовый тип для всех AHU. Подаёт обработанный воздух в зону.
+    points:
+      - name: supply_air_temp
+        unit: degC
+        description: Температура приточного воздуха
+      - name: return_air_temp
+        unit: degC
+        description: Температура вытяжного воздуха
+      - name: outside_air_temp
+        unit: degC
+        description: Температура наружного воздуха
+      - name: supply_fan_status
+        type: bool
+        description: Состояние приточного вентилятора
+      - name: heating_valve
+        unit: percent
+        description: Положение клапана нагрева 0..100%
+      - name: cooling_valve
+        unit: percent
+        description: Положение клапана охлаждения 0..100%
+
+  - id: rooftop
+    extends: ahu
+    name: Руфтоп (крышный кондиционер)
+    description: AHU с собственным компрессором, монтируется на крыше.
+    points:
+      - name: compressor_status
+        type: bool
+        description: Состояние компрессора
+      - name: condenser_pressure
+        unit: bar
+        description: Давление в конденсаторе
+
+  - id: chiller
+    name: Чиллер
+    description: Холодильная машина для центральной системы охлаждения.
+    points:
+      - name: leaving_water_temp
+        unit: degC
+        description: Температура воды на выходе чиллера
+      - name: entering_water_temp
+        unit: degC
+        description: Температура воды на входе чиллера
+      - name: chiller_status
+        type: bool
+        description: Состояние чиллера
+      - name: chiller_capacity
+        unit: percent
+        description: Текущая загрузка чиллера 0..100%
+
+  - id: fcu
+    name: Фанкойл
+    description: Локальный кондиционер с тремя скоростями вентилятора.
+    points:
+      - name: zone_temp
+        unit: degC
+        description: Температура в зоне
+      - name: setpoint
+        unit: degC
+        description: Уставка температуры
+      - name: fan_speed
+        type: enum
+        description: Скорость вентилятора (off/low/med/high)
+
+  - id: boiler
+    name: Котёл
+    description: Газовый или электрический котёл системы отопления.
+    points:
+      - name: boiler_supply_temp
+        unit: degC
+        description: Температура подачи теплоносителя
+      - name: boiler_return_temp
+        unit: degC
+        description: Температура обратки
+      - name: boiler_status
+        type: bool
+        description: Состояние котла
+      - name: gas_consumption
+        unit: m3
+        description: Расход газа за час
+
+  - id: parking_co2
+    name: CO2-датчик паркинга
+    description: Контроль качества воздуха в подземной парковке. Управляет вытяжкой.
+    points:
+      - name: co2_level
+        unit: ppm
+        description: Концентрация CO2
+
+equipment:
+  # Cocolnyi etazh — паркинги и техкомната
+  - id: rtu_0_1
+    type: rooftop
+    space: floor.0.tech_room
+    name: РТУ 0.1
+    aliases: ["руфтоп 0.1", "РТУ цоколь", "rtu 0.1"]
+    description: Обслуживает технические помещения цоколя.
+    point_mappings:
+      supply_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/RTU_0_1/SAT"
+      return_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/RTU_0_1/RAT"
+      outside_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/RTU_0_1/OAT"
+      supply_fan_status:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/RTU_0_1/SF_Status"
+
+  # Pervyi etazh — лобби и фудкорт
+  - id: ahu_1_1
+    type: ahu
+    space: floor.1.lobby
+    name: ВУ 1.1
+    aliases: ["ву 1.1", "вентустановка лобби", "ahu 1.1", "приточка лобби"]
+    description: Главный лобби-вход, обслуживает входную группу.
+    point_mappings:
+      supply_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/AHU_1_1/SAT"
+      return_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/AHU_1_1/RAT"
+      heating_valve:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/AHU_1_1/HtgValve"
+      cooling_valve:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/AHU_1_1/ClgValve"
+
+  - id: ahu_1_2
+    type: ahu
+    space: floor.1.foodcourt
+    name: ВУ 1.2
+    aliases: ["ву 1.2", "вентустановка фудкорта", "ahu 1.2"]
+    point_mappings:
+      supply_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/AHU_1_2/SAT"
+      return_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/AHU_1_2/RAT"
+
+  - id: rtu_1_1
+    type: rooftop
+    space: floor.1.foodcourt
+    name: РТУ 1.1
+    aliases: ["руфтоп 1.1", "РТУ фудкорт", "rtu 1.1"]
+    point_mappings:
+      supply_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/RTU_1_1/SAT"
+      compressor_status:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/RTU_1_1/Compressor_Status"
+
+  # Vtoroi etazh — кинотеатр и розница
+  - id: ahu_2_1
+    type: ahu
+    space: floor.2.cinema
+    name: ВУ 2.1 кинотеатр
+    aliases: ["ву 2.1", "вентустановка кинотеатра", "ahu cinema"]
+    point_mappings:
+      supply_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/AHU_2_1/SAT"
+      return_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/AHU_2_1/RAT"
+
+  - id: rtu_2_1
+    type: rooftop
+    space: floor.2.cinema
+    name: РТУ 2.1
+    aliases: ["руфтоп 2.1", "rtu 2.1"]
+    point_mappings:
+      supply_air_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/HVAC/RTU_2_1/SAT"
+
+  # Tretiy etazh — офисы
+  - id: fcu_3_1
+    type: fcu
+    space: floor.3.offices
+    name: Фанкойл 3.1
+    aliases: ["фк 3.1", "fcu 3.1", "фанкойл офис 1"]
+    point_mappings:
+      zone_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Zones/FCU_3_1/ZoneTemp"
+      setpoint:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Zones/FCU_3_1/Setpoint"
+      fan_speed:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Zones/FCU_3_1/FanSpeed"
+
+  - id: fcu_3_2
+    type: fcu
+    space: floor.3.offices
+    name: Фанкойл 3.2
+    aliases: ["фк 3.2", "fcu 3.2", "фанкойл офис 2"]
+    point_mappings:
+      zone_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Zones/FCU_3_2/ZoneTemp"
+      setpoint:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Zones/FCU_3_2/Setpoint"
+
+  # Centralnoye holodosnabzhenie
+  - id: chiller_1
+    type: chiller
+    space: floor.0.tech_room
+    name: Чиллер №1
+    aliases: ["чиллер 1", "chiller 1", "холодильник 1"]
+    description: Основной чиллер водяной системы охлаждения.
+    point_mappings:
+      leaving_water_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Chiller_1/LWT"
+      entering_water_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Chiller_1/EWT"
+      chiller_status:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Chiller_1/Status"
+      chiller_capacity:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Chiller_1/Capacity"
+
+  - id: chiller_2
+    type: chiller
+    space: floor.0.tech_room
+    name: Чиллер №2
+    aliases: ["чиллер 2", "chiller 2"]
+    description: Резервный чиллер.
+    point_mappings:
+      leaving_water_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Chiller_2/LWT"
+      chiller_status:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Chiller_2/Status"
+
+  # Otoplenie
+  - id: boiler_1
+    type: boiler
+    space: floor.0.tech_room
+    name: Котёл №1
+    aliases: ["котёл 1", "boiler 1"]
+    point_mappings:
+      boiler_supply_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Boiler_1/SupplyTemp"
+      boiler_return_temp:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Boiler_1/ReturnTemp"
+      boiler_status:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Boiler_1/Status"
+      gas_consumption:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Plant/Boiler_1/GasFlow"
+
+  # Parking CO2 sensors
+  - id: co2_parking_a
+    type: parking_co2
+    space: floor.0.parking_a
+    name: CO2 паркинг сектор A
+    aliases: ["co2 A", "co2 паркинг A"]
+    point_mappings:
+      co2_level:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Parking/A/CO2"
+
+  - id: co2_parking_b
+    type: parking_co2
+    space: floor.0.parking_b
+    name: CO2 паркинг сектор B
+    aliases: ["co2 B", "co2 паркинг B"]
+    point_mappings:
+      co2_level:
+        ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Parking/B/CO2"
+
+points:
+  # Standalone points not assigned to equipment
+  - id: lobby_temp_sensor
+    space: floor.1.lobby
+    name: Датчик температуры лобби
+    type: numeric
+    unit: degC
+    aliases: ["температура лобби"]
+    ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Sensors/Lobby_Temp"
+
+  - id: foodcourt_humidity
+    space: floor.1.foodcourt
+    name: Датчик влажности фудкорт
+    type: numeric
+    unit: percent
+    aliases: ["влажность фудкорта"]
+    ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Sensors/Foodcourt_RH"
+
+  - id: outdoor_temp
+    space: building
+    name: Уличная температура
+    type: numeric
+    unit: degC
+    aliases: ["температура улицы", "outdoor temp", "OAT"]
+    ord: "station:|slot:/Drivers/NiagaraNetwork/JACE_BMS/Weather/OutsideTemp"
