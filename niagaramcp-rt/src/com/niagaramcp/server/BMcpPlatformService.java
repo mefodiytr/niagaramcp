@@ -24,6 +24,7 @@ import javax.baja.sys.Context;
 import javax.baja.sys.Property;
 import javax.baja.sys.Sys;
 import javax.baja.sys.Type;
+import com.niagaramcp.server.auth.TokenHasher;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 import com.niagaramcp.server.prompts.QueryAlarmSummaryPrompt;
 import com.niagaramcp.server.prompts.QueryEquipmentStatePrompt;
@@ -102,7 +103,14 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "toolCount",                type = "int",     defaultValue = "0", flags = 3),
   @NiagaraProperty(name = "resourceCount",            type = "int",     defaultValue = "0", flags = 3),
   @NiagaraProperty(name = "promptCount",              type = "int",     defaultValue = "0", flags = 3),
-  @NiagaraProperty(name = "sessionCount",             type = "int",     defaultValue = "0", flags = 3)
+  @NiagaraProperty(name = "sessionCount",             type = "int",     defaultValue = "0", flags = 3),
+  // v0.5: per-service salt for hashing user MCP tokens stored as
+  // mcp:tokenHash tags on BUsers. Generated once on first
+  // serviceStarted; persists across restarts via .bog. flags=3
+  // (SUMMARY+READONLY) — visible to operators for diagnostic purposes
+  // but never edited by hand (changing the salt invalidates ALL
+  // existing user tokens at once, requiring a full rotation).
+  @NiagaraProperty(name = "tokenSalt",                type = "String",  defaultValue = "\"\"", flags = 3)
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -200,6 +208,12 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public int getSessionCount() { return getInt(sessionCount); }
   public void setSessionCount(int v) { setInt(sessionCount, v, null); }
 
+  // v0.5 — per-service salt for token hashing. flags=3.
+  // Initial value "" → triggers lazy generation in serviceStarted().
+  public static final Property tokenSalt = newProperty(3, "", null);
+  public String getTokenSalt() { return getString(tokenSalt); }
+  public void setTokenSalt(String v) { setString(tokenSalt, v, null); }
+
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
 
@@ -232,6 +246,15 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     started();
     bcLog("serviceStarted");
     SERVICE_START_TIME_MS = System.currentTimeMillis();
+
+    // v0.5: lazy-generate per-service salt on first start.
+    // Persists in .bog from then on. Empty -> first ever start (or
+    // operator wiped the value); generate fresh.
+    if (getTokenSalt() == null || getTokenSalt().isEmpty()) {
+      String fresh = TokenHasher.generateSaltBase64();
+      setTokenSalt(fresh);
+      bcLog("generated initial tokenSalt (length=" + fresh.length() + ")");
+    }
 
     ToolRegistry r = new ToolRegistry();
     // v0.3.1: skip operator-disabled tools (read directly from this — INSTANCE not set yet)
@@ -403,6 +426,17 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static String apiToken() {
     BMcpPlatformService s = INSTANCE;
     return (s == null) ? "" : s.getApiToken();
+  }
+
+  /**
+   * @return base64-encoded per-service salt for hashing user MCP tokens,
+   *         or empty string if the service is not started yet. Salt is
+   *         lazy-generated on first {@link #serviceStarted()} and
+   *         persists in .bog across restarts.
+   */
+  public static String tokenSalt() {
+    BMcpPlatformService s = INSTANCE;
+    return (s == null) ? "" : s.getTokenSalt();
   }
 
   public static int sseHeartbeatSec() {
