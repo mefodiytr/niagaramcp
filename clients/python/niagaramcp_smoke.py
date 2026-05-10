@@ -711,10 +711,14 @@ def run_v05_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure=
     smoke_token = secrets.token_urlsafe(32)
 
     # 2. setupTestUser under apiToken
-    status, _, body = client_apitoken.initialize()
+    status, hdrs, body = client_apitoken.initialize()
     if status != 200:
         fail(f"v0.5 init failed (HTTP {status})")
         return p, f + 1
+    # Capture the Mcp-Session-Id from the initialize response — subsequent
+    # POSTs need it on every request (the project's StreamableClient
+    # doesn't auto-stash; matches run_streamable_tests step 1 pattern).
+    client_apitoken.session_id = hdrs.get("Mcp-Session-Id") or hdrs.get("mcp-session-id")
 
     status, _, body = client_apitoken.tools_call(
         "setupTestUser",
@@ -734,10 +738,11 @@ def run_v05_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure=
 
     # 3. reconnect under user-Bearer
     user_client = StreamableClient(base, smoke_token, insecure=insecure)
-    status, _, body = user_client.initialize()
+    status, hdrs, body = user_client.initialize()
     if status != 200:
         fail(f"user-Bearer init failed (HTTP {status}): {body[:200]!r}")
         return p, f + 1
+    user_client.session_id = hdrs.get("Mcp-Session-Id") or hdrs.get("mcp-session-id")
 
     # 4. createComponent
     folder_name = f"mcpSmoke_{int(time.time())}"
@@ -800,10 +805,12 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
 
     # --- Pre-flight: bind tokenHash to the test user ---
     smoke_token = secrets.token_urlsafe(32)
-    status, _, body = client_apitoken.initialize()
+    status, hdrs, body = client_apitoken.initialize()
     if status != 200:
         fail(f"v0.5.1 init failed (HTTP {status})")
         return p, f + 1
+    client_apitoken.session_id = hdrs.get("Mcp-Session-Id") or hdrs.get("mcp-session-id")
+
     status, _, body = client_apitoken.tools_call(
         "setupTestUser",
         {"username": smoke_user, "token": smoke_token},
@@ -819,10 +826,11 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
     client_apitoken.delete()
 
     user_client = StreamableClient(base, smoke_token, insecure=insecure)
-    status, _, body = user_client.initialize()
+    status, hdrs, body = user_client.initialize()
     if status != 200:
         fail(f"user-Bearer init failed (HTTP {status}): {body[:200]!r}")
         return p, f + 1
+    user_client.session_id = hdrs.get("Mcp-Session-Id") or hdrs.get("mcp-session-id")
 
     # --- Step 26: createComponent (fixture for the rest) ---
     step(26, f"createComponent v0.5.1 throwaway fixture")
