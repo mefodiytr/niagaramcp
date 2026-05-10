@@ -540,6 +540,74 @@ def run_v031_tests(client, base, insecure=False):
     return p, f
 
 
+# ─── v0.4 operational additions ───────────────────────────────────────────────
+def run_v04_tests(client):
+    """v0.4-specific: tool category tags, getDiagnosticDump, transports list."""
+    p, f = 0, 0
+
+    step(20, "Fresh initialize for v0.4 tests + verify serverInfo.transports")
+    client.session_id = None
+    status, headers, body = client.initialize()
+    if status == 200:
+        sid = headers.get("Mcp-Session-Id") or headers.get("mcp-session-id")
+        client.session_id = sid
+        j = parse_json(body)
+        info = j.get("result", {}).get("serverInfo", {}) if j else {}
+        transports = info.get("transports")
+        if isinstance(transports, list) and len(transports) > 0:
+            ok(f"new session + transports={transports}")
+            p += 1
+        else:
+            fail(f"missing or empty serverInfo.transports: {info!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}")
+        f += 1
+        return p, f
+
+    step(21, "tools/list: every tool has 'category' field; ≥6 distinct categories")
+    status, _, body = client.tools_list()
+    if status == 200:
+        j = parse_json(body)
+        tools = j.get("result", {}).get("tools", []) if j else []
+        missing = [t.get("name") for t in tools if not t.get("category")]
+        cats = sorted({t.get("category") for t in tools if t.get("category")})
+        if not missing and len(cats) >= 6:
+            ok(f"{len(tools)} tools across {len(cats)} categories: {cats}")
+            p += 1
+        elif missing:
+            fail(f"tools without category: {missing}")
+            f += 1
+        else:
+            fail(f"only {len(cats)} distinct categories: {cats}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(22, "tools/call getDiagnosticDump — verify top-level keys")
+    status, _, body = client.tools_call("getDiagnosticDump", {}, request_id=22)
+    if status == 200:
+        j = parse_json(body)
+        content = j.get("result", {}).get("content", []) if j else []
+        text = content[0].get("text") if content else None
+        info = parse_json(text) if text else None
+        required_keys = {"server", "sessions", "knowledge", "health", "auditLogTail"}
+        if info and required_keys.issubset(info.keys()):
+            ok(f"diagnostic dump keys present: {sorted(info.keys())}")
+            p += 1
+        else:
+            actual = sorted(info.keys()) if info else None
+            fail(f"missing required keys; got {actual}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    client.delete()
+    return p, f
+
+
 # ─── main ─────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
@@ -557,15 +625,18 @@ def main():
                     help="skip v0.3.0 tests (resources, prompts, knowledge)")
     ap.add_argument("--skip-v031", action="store_true",
                     help="skip v0.3.1 tests (diagnostics + /health)")
+    ap.add_argument("--skip-v04", action="store_true",
+                    help="skip v0.4 tests (categories, dump, transports list)")
     args = ap.parse_args()
 
     base = f"{args.scheme}://{args.host}:{args.port}/{args.module}"
-    print(f"{BOLD}niagaramcp smoke test (v0.2.0 + v0.3.0 + v0.3.1){RESET}")
+    print(f"{BOLD}niagaramcp smoke test (v0.2.0 + v0.3.0 + v0.3.1 + v0.4){RESET}")
     print(f"  base URL: {base}")
     print(f"  insecure: {args.insecure}")
     print(f"  skip SSE: {args.skip_sse}")
     print(f"  skip v0.3.0: {args.skip_v030}")
     print(f"  skip v0.3.1: {args.skip_v031}")
+    print(f"  skip v0.4:   {args.skip_v04}")
 
     client = StreamableClient(base, args.token, insecure=args.insecure)
 
@@ -584,8 +655,12 @@ def main():
     if not args.skip_v031:
         p_v31, f_v31 = run_v031_tests(client, base, insecure=args.insecure)
 
-    total_p = p_s + p_sse + p_v3 + p_v31
-    total_f = f_s + f_sse + f_v3 + f_v31
+    p_v4, f_v4 = (0, 0)
+    if not args.skip_v04:
+        p_v4, f_v4 = run_v04_tests(client)
+
+    total_p = p_s + p_sse + p_v3 + p_v31 + p_v4
+    total_f = f_s + f_sse + f_v3 + f_v31 + f_v4
     print(f"\n{BOLD}Result:{RESET} "
           f"{GREEN}{total_p} passed{RESET}, "
           f"{RED if total_f else GREY}{total_f} failed{RESET}")

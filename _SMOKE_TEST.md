@@ -526,3 +526,87 @@ py clients/python/niagaramcp_smoke.py --host <station> --token $TOKEN --insecure
 | 10 | smoke client 19 passed | □ |
 
 Любой провал — стоп.
+
+---
+
+# v0.4.0 — Operational improvements smoke test
+
+После v0.4 jar deploy. Использует тот же `$SID` flow.
+
+### Шаг 1. tools/list = 35 + categories присутствуют
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | \
+  jq '.result.tools | length, (.[] | {name, category})' | head -10
+```
+
+Ожидать: `35` total, каждый tool с непустым `category`.
+
+### Шаг 2. serverInfo.transports
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":2,"method":"initialize"}' | \
+  jq '.result.serverInfo'
+```
+
+Ожидать `{name, version: "0.4.0", transports: ["sse", "streamable-http"]}`.
+
+### Шаг 3. tools/call getDiagnosticDump
+
+```bash
+curl ... -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{
+  "name":"getDiagnosticDump","arguments":{}}}'
+```
+
+Ожидать в `content[0].text` JSON c top-level keys:
+`server`, `sessions`, `knowledge`, `health`, `auditLogTail`.
+
+### Шаг 4. Transport toggle — sseEnabled=false (manual, restart-required)
+
+В Workbench: установить `sseEnabled=false`, restart станции.
+
+```bash
+curl -i -H "Authorization: Bearer $TOKEN" "$HOST/niagaramcp/sse"
+```
+
+Ожидать `HTTP/1.1 503 Service Unavailable` + JSON body
+`{"error":{"code":-32009,"message":"Transport disabled: sse",…}}`.
+
+`/mcp` должен работать как раньше. `/health` тоже.
+
+После проверки — вернуть `sseEnabled=true`, restart.
+
+### Шаг 5. Transport toggle — streamableEnabled=false
+
+Аналогично: `streamableEnabled=false`, restart.
+
+```bash
+curl -i -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}' \
+  "$HOST/niagaramcp/mcp"
+```
+
+Ожидать `HTTP/1.1 503` + JSON-RPC `-32009` body.
+`/sse` + `/messages` должен работать. После — вернуть flag, restart.
+
+### Шаг 6. Smoke client passes 22 steps
+
+```bash
+py clients/python/niagaramcp_smoke.py --host <station> --token $TOKEN --insecure
+```
+
+Ожидать `Result: 22 passed, 0 failed`.
+
+### Чек-лист v0.4
+
+| # | Проверка | Статус |
+|---|---|---|
+| 1 | tools/list = 35 + все с category | □ |
+| 2 | serverInfo.transports массив | □ |
+| 3 | getDiagnosticDump shape | □ |
+| 4 | sseEnabled=false → /sse 503 | □ |
+| 5 | streamableEnabled=false → /mcp 503 | □ |
+| 6 | smoke client 22 passed | □ |
+
+Любой провал — стоп.

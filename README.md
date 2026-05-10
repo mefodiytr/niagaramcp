@@ -293,6 +293,61 @@ real walkthrough. The jar-bundled `niagara://samples/standard-types`
 
 ---
 
+## Operational features (v0.4.0)
+
+v0.4.0 is a minor release adding operational controls and reducing
+jar size from ~243 KB to ~213 KB.
+
+### Transport toggles
+
+Two new properties on `BMcpPlatformService`:
+
+- `sseEnabled` (default `true`) — controls `/sse` + `/messages`.
+- `streamableEnabled` (default `true`) — controls `POST/GET/DELETE /mcp`.
+
+Disabling a transport returns HTTP 503 + JSON-RPC body
+`{error:{code:-32009, message:"Transport disabled: …", data:{transport:…}}}`.
+`/health` is exempt — monitors stay accessible regardless.
+Restart-required (v0.5 may add runtime apply).
+
+### Tool category tags
+
+`tools/list` response now includes a `category` field per tool, so
+clients can group tools in their UI:
+
+| Category | Tools |
+|---|---|
+| `transport-test` | `echo` |
+| `read` | `listChildren`, `readPoint`, `bqlQuery` |
+| `write` | `writePoint` |
+| `walkthrough-read` | `getOverview`, `inspectComponent`, `findComponentsByType`, `getSlots` |
+| `walkthrough-write` | 10 walkthrough writers |
+| `management` | `getKnowledgeSummary`, `findUnmappedComponents`, `exportKnowledge`, `importKnowledge`, `reloadKnowledge` |
+| `search` | `findEquipment`, `findInSpace`, `findPoints` |
+| `history` | `readHistory` |
+| `alarms` | `getActiveAlarms`, `getAlarmHistory` |
+| `diagnostic` | `getServerInfo`, `probeOrd`, `checkKnowledgeIntegrity`, `getServiceHealth`, **`getDiagnosticDump`** |
+
+### `getDiagnosticDump` tool (35th)
+
+One-shot snapshot for ops dashboards — combines server identity,
+sessions, knowledge stats, service health, and the last 20 lines of
+the audit log into one JSON response.
+
+### `serverInfo.transports`
+
+`initialize` response now advertises which transports are currently
+enabled in `serverInfo.transports`. Clients still pick by URL —
+informational only.
+
+### Jar size reduction
+
+12 unused JSON utility classes (`XML`, `CDL`, `Cookie`, `HTTP`, etc.)
+removed from the embedded `com.niagaramcp.json` package. Jar size
+243 KB → 213 KB (−30 KB / −12%).
+
+---
+
 ## Security
 
 ### What you have
