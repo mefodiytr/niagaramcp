@@ -8,8 +8,8 @@ import java.io.Reader;
 import java.io.StringReader;
 
 /**
- * Токенизатор JSON: построчно разбирает JSON-текст, предоставляя методы
- * для последовательного чтения токенов (строк, чисел, ключевых слов).
+ * JSON tokeniser: parses JSON text incrementally, exposing methods
+ * for sequential token reads (strings, numbers, keywords).
  */
 public class JSONTokener {
    private long character;

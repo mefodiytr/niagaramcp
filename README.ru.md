@@ -292,6 +292,49 @@ generic типов) из v0.3.0 — отдельная история.
 
 ---
 
+## Operational features (v0.4.0)
+
+v0.4.0 — minor-релиз с операционными фичами и уменьшением jar
+(243 KB → 213 KB).
+
+### Transport toggles
+
+2 новых property на `BMcpPlatformService`:
+
+- `sseEnabled` (default `true`) — управляет `/sse` + `/messages`.
+- `streamableEnabled` (default `true`) — управляет
+  `POST/GET/DELETE /mcp`.
+
+Отключённый transport отвечает HTTP 503 + JSON-RPC body
+`{error:{code:-32009, message:"Transport disabled: …", data:{transport:…}}}`.
+`/health` всегда доступен. Restart-required (v0.5 может добавить
+runtime apply).
+
+### Tool category tags
+
+`tools/list` теперь возвращает поле `category` для каждого tool —
+клиенты могут группировать в UI по категориям (`read`, `write`,
+`walkthrough-write`, `diagnostic`, и т.д., всего 10 категорий).
+
+### `getDiagnosticDump` tool (35-й)
+
+One-shot snapshot для ops-дашбордов — собирает server identity,
+sessions, knowledge stats, service health и хвост audit log в один
+JSON-ответ.
+
+### `serverInfo.transports`
+
+`initialize`-ответ теперь имеет `serverInfo.transports` со списком
+включённых транспортов. Информационно — клиенты выбирают по URL.
+
+### Уменьшение jar
+
+12 неиспользуемых JSON utility-классов (`XML`, `CDL`, `Cookie`,
+`HTTP`, и т.д.) удалены из embedded `com.niagaramcp.json`. Jar:
+243 KB → 213 KB (−30 KB / −12 %).
+
+---
+
 ## Безопасность
 
 ### Что есть

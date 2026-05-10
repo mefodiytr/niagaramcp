@@ -14,6 +14,7 @@ import com.niagaramcp.server.knowledge.Space;
 public final class UpdateSpaceTool implements Tool {
 
   @Override public String name()        { return "updateSpace"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Update fields of an existing space. Only fields present in args are modified; " +
            "absent fields preserve existing values. id is required for lookup.";

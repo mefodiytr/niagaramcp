@@ -1,13 +1,11 @@
 package com.niagaramcp.json;
 
 /**
- * Интерфейс для объектов, умеющих самостоятельно сериализоваться в JSON-строку.
+ * Interface for objects that know how to serialise themselves as a JSON string.
  */
 public interface JSONString {
    /**
-    * Возвращает JSON-представление объекта в виде строки.
-    *
-    * @return строка, содержащая корректный JSON
+    * @return well-formed JSON representation of this object
     */
    String toJSONString();
 }

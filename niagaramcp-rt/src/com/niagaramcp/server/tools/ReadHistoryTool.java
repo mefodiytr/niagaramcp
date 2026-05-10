@@ -36,6 +36,7 @@ public final class ReadHistoryTool implements Tool {
   private static final long ITERATION_TIMEOUT_MS = 10_000L;
 
   @Override public String name()        { return "readHistory"; }
+  @Override public String getCategory() { return "history"; }
   @Override public String description() {
     return "Read history records for a control point or BHistoryExt between from/to (ISO " +
            "datetime or epoch ms). Optional aggregation: none|avg|min|max|count " +

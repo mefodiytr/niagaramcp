@@ -19,11 +19,12 @@ import java.util.Map;
 public final class CheckKnowledgeIntegrityTool implements Tool {
 
   @Override public String name()        { return "checkKnowledgeIntegrity"; }
+  @Override public String getCategory() { return "diagnostic"; }
   @Override public String description() {
     return "Check that every ord in the knowledge model resolves on the running station. " +
            "Returns {totalRefs, validRefs, brokenRefs:[{equipment|point, role?, ord, reason}]}.";
   }
-  @Override public String schemaJson() { return "{\"type\":\"object\",\"properties\":{}}"; }
+  @Override public String schemaJson() { return ToolSchemaHelpers.emptySchema(); }
 
   @Override
   public String call(JSONObject args) throws Exception {

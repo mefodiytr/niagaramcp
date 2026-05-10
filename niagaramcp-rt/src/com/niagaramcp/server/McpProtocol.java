@@ -58,6 +58,8 @@ public final class McpProtocol {
   public static final int ERR_HISTORY_EXT_MISSING   = -32007;
   /** {@link javax.baja.alarm.BAlarmService} unavailable. */
   public static final int ERR_ALARM_SERVICE_MISSING = -32008;
+  /** Transport disabled by operator (sseEnabled / streamableEnabled property false). */
+  public static final int ERR_TRANSPORT_DISABLED    = -32009;
 
   public static JSONObject handle(JSONObject request, ToolRegistry registry, Session session) {
     Object id = request.has("id") ? request.get("id") : null;
@@ -125,7 +127,17 @@ public final class McpProtocol {
 
     JSONObject info = new JSONObject();
     info.put("name", SERVER_NAME);
-    info.put("version", SERVER_VERSION);
+    // serverInfo.version reflects the niagaramcp module version, not the
+    // (legacy) SERVER_VERSION literal — so AI clients see what's actually
+    // deployed. Source of truth lives in GetServerInfoTool.NIAGARAMCP_VERSION.
+    info.put("version", com.niagaramcp.server.tools.GetServerInfoTool.NIAGARAMCP_VERSION);
+
+    // v0.4: advertise enabled transports (informational; clients still pick
+    // by URL). Reflects current sseEnabled / streamableEnabled property values.
+    JSONArray transports = new JSONArray();
+    if (BMcpPlatformService.sseEnabled())        transports.put("sse");
+    if (BMcpPlatformService.streamableEnabled()) transports.put("streamable-http");
+    info.put("transports", transports);
 
     JSONObject result = new JSONObject();
     result.put("protocolVersion", BMcpPlatformService.mcpProtocolVersion());
@@ -242,6 +254,7 @@ public final class McpProtocol {
       for (Tool t : registry.all()) {
         JSONObject one = new JSONObject();
         one.put("name", t.name());
+        one.put("category", t.getCategory());            // v0.4: client-side grouping
         one.put("description", t.description());
         one.put("inputSchema", new JSONObject(new JSONTokener(t.schemaJson())));
         arr.put(one);

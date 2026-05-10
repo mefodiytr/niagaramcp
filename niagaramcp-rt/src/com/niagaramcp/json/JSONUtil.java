@@ -10,8 +10,8 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Вспомогательные методы для работы с {@link JSONObject} и {@link JSONArray}:
- * создание неизменяемых обёрток в виде {@link List} и {@link Map}.
+ * Helpers for {@link JSONObject} and {@link JSONArray}:
+ * create immutable {@link List} and {@link Map} wrappers.
  */
 public final class JSONUtil {
    private JSONUtil() {

@@ -7,16 +7,14 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Аннотация, задающая альтернативное имя свойства при автоматической сериализации метода в JSON.
+ * Override the JSON property name used by automatic bean serialization.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.METHOD})
 public @interface JSONPropertyName {
    /**
-    * Имя свойства, используемое в итоговом JSON.
-    *
-    * @return имя свойства
+    * @return property name to emit in the resulting JSON
     */
    String value();
 }

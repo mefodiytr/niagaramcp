@@ -15,6 +15,7 @@ import com.niagaramcp.server.knowledge.StandalonePoint;
 public final class CreateStandalonePointTool implements Tool {
 
   @Override public String name()        { return "createStandalonePoint"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Register a stand-alone point (e.g. ambient temperature/CO2 sensor) under a space.";
   }

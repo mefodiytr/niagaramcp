@@ -20,16 +20,17 @@ import java.io.File;
 /** Diagnostic snapshot: version, uptime, sessions, knowledge file, registries. */
 public final class GetServerInfoTool implements Tool {
 
-  /** Module version string. Read by health endpoint and protocol-version property accessor. */
-  public static final String NIAGARAMCP_VERSION = "0.3.1";
+  /** Module version string. Read by health endpoint and serverInfo.version. */
+  public static final String NIAGARAMCP_VERSION = "0.4.0";
 
   @Override public String name()        { return "getServerInfo"; }
+  @Override public String getCategory() { return "diagnostic"; }
   @Override public String description() {
     return "Server diagnostic snapshot — version, uptimeSeconds, sessionCount, " +
            "knowledgeFile {path,size,equipmentCount,lastModifiedMs}, transports, " +
            "registered tools/resources/prompts.";
   }
-  @Override public String schemaJson() { return "{\"type\":\"object\",\"properties\":{}}"; }
+  @Override public String schemaJson() { return ToolSchemaHelpers.emptySchema(); }
 
   @Override
   public String call(JSONObject args) throws Exception {

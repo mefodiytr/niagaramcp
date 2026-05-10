@@ -20,6 +20,7 @@ import java.util.Set;
 public final class FindInSpaceTool implements Tool {
 
   @Override public String name()        { return "findInSpace"; }
+  @Override public String getCategory() { return "search"; }
   @Override public String description() {
     return "List equipment and stand-alone points within a space. If recursive=true, " +
            "includes descendant spaces. equipmentType is an optional type filter.";

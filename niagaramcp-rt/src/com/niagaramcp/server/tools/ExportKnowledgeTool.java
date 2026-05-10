@@ -13,6 +13,7 @@ import com.niagaramcp.server.yaml.YamlWriter;
 public final class ExportKnowledgeTool implements Tool {
 
   @Override public String name()        { return "exportKnowledge"; }
+  @Override public String getCategory() { return "management"; }
   @Override public String description() {
     return "Return the entire knowledge model as a string. format: 'yaml' (default) or 'json'.";
   }

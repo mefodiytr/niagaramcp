@@ -18,6 +18,7 @@ import java.util.List;
 public final class BulkCreateEquipmentTool implements Tool {
 
   @Override public String name()        { return "bulkCreateEquipment"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Create multiple equipment entries atomically. Validates all entries before " +
            "writing any; either all succeed or none are added.";

@@ -18,6 +18,7 @@ import com.niagaramcp.server.yaml.YamlReader;
 public final class ImportKnowledgeTool implements Tool {
 
   @Override public String name()        { return "importKnowledge"; }
+  @Override public String getCategory() { return "management"; }
   @Override public String description() {
     return "Import a knowledge document. content is the raw YAML/JSON text (autodetected); " +
            "OR set source='sample' to load the jar-bundled sample-knowledge.yaml. " +

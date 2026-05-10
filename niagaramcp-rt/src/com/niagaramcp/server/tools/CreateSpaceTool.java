@@ -15,6 +15,7 @@ import com.niagaramcp.server.knowledge.Space;
 public final class CreateSpaceTool implements Tool {
 
   @Override public String name()        { return "createSpace"; }
+  @Override public String getCategory() { return "walkthrough-write"; }
   @Override public String description() {
     return "Create a new space (zone/floor/parking/...) in the knowledge model. " +
            "id must be unique and kebab-case.";

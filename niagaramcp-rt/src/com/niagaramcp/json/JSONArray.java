@@ -13,8 +13,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Представление JSON-массива: упорядоченной последовательности значений.
- * Поддерживает парсинг JSON-текста, построение массива программно и сериализацию обратно в JSON.
+ * JSON array — an ordered sequence of values.
+ * Supports parsing JSON text, programmatic construction, and re-serialisation.
  */
 public class JSONArray implements Iterable<Object> {
    private final ArrayList<Object> myArrayList;

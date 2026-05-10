@@ -9,15 +9,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- v0.4: `BPasswordPassword` для `apiToken`; `BAuditService` записи для `writePoint`/`bqlQuery`/walkthrough writers; RBAC по ord-pattern; раздельные read-only / write токены.
-- v0.4: shaded `com.niagaramcp.json` чтобы избежать classloader-конфликтов с MCS-станциями.
-- v0.4: schedule-related read/write (BWeekSchedule).
-- v0.4: file watcher для knowledge.yaml (если станет нужен — пока reloadKnowledge).
-- v0.4: runtime-mutable `disabledTools` (в v0.3.1 — restart-required).
+- v0.5: `BPasswordPassword` для `apiToken`; `BAuditService` записи для `writePoint`/`bqlQuery`/walkthrough writers; RBAC по ord-pattern; раздельные read-only / write токены.
+- v0.5: schedule-related read/write (BWeekSchedule).
+- v0.5: file watcher для knowledge.yaml; runtime-mutable `disabledTools`/`sseEnabled`/`streamableEnabled`.
+- v0.5: i18n message bundle (translate user-facing tool descriptions; v0.4 left them in Russian).
+- v0.5: per-transport session breakdown in `getDiagnosticDump` (requires McpSessions to expose typed iteration).
 - (Streamable HTTP-related deferred items, см. ADR-0001 «Open items»)
   - Server-initiated push messages на `GET /mcp` (сейчас вырожденный stub)
   - Streaming response shape (`text/event-stream` на POST для прогресса tool-calls)
   - OAuth2 resource-server profile (Bearer JWT валидация)
+
+---
+
+## [0.4.0] — 2026-05-10
+
+Operational improvements release. Adds transport toggles, tool
+category tags, a combined diagnostic dump, and trims the jar
+significantly via removing unused JSON utility classes. No
+breaking changes.
+
+### Added
+
+- **Transport toggles** — 2 new properties on `BMcpPlatformService`:
+  - `sseEnabled` (boolean, default `true`) — controls
+    `/sse` + `/messages` endpoints.
+  - `streamableEnabled` (boolean, default `true`) — controls
+    `/mcp` (POST/GET/DELETE) endpoints.
+  - When disabled, the corresponding endpoint returns
+    HTTP 503 + JSON-RPC body with new error code **`-32009`
+    ERR_TRANSPORT_DISABLED** + `data{transport: ...}`. `/health`
+    is exempt — stays accessible regardless. Existing sessions of
+    a disabled transport time out naturally via
+    `mcpSessionIdleTimeoutSec`. Restart-required (v0.5 may add
+    runtime apply).
+- **Tool category tags** — `Tool` interface gains a `default String
+  getCategory() { return "general"; }` method; all 34 existing
+  tools override with one of 10 categories (`transport-test`,
+  `read`, `write`, `walkthrough-read`, `walkthrough-write`,
+  `management`, `search`, `history`, `alarms`, `diagnostic`).
+  `tools/list` response now includes a `category` field per tool
+  for client-side grouping.
+- **`getDiagnosticDump` tool** (35th tool, category `diagnostic`)
+  — combined snapshot in one round-trip: `server` (version,
+  uptime, transports), `sessions` (active count), `knowledge`
+  (file path, size, counts), `health` (alarm/history/file), and
+  `auditLogTail` (last 20 lines of `knowledge.audit.log`).
+- **`serverInfo.transports`** array in `initialize` response —
+  reflects currently-enabled transports (informational; clients
+  pick by URL).
+- **`ToolSchemaHelpers`** utility — reusable helpers for tool
+  `inputSchema` JSON construction (`stringParam`, `intParam`,
+  `boolParam`, `ordParam`, `objectParam`, `stringArrayParam`,
+  `objectSchema(required, props…)`, `emptySchema()`). Used by
+  the 7 parameter-less tools; available for future tools.
+- **Smoke client** extended (`clients/python/niagaramcp_smoke.py`)
+  — 3 new steps (20-22) covering serverInfo.transports, tool
+  category tags presence, getDiagnosticDump shape. Total now 22.
+
+### Changed
+
+- `serverInfo.version` in `initialize` response now reflects the
+  actual niagaramcp module version (sourced from
+  `GetServerInfoTool.NIAGARAMCP_VERSION`, bumped to `"0.4.0"`).
+  Was historically hardcoded to `"1.0.0"` since v0.1.0.
+- All 11 javadoc comments in `com.niagaramcp.json` translated from
+  Russian to English. User-facing `description()` strings in 8
+  v0.1-v0.2 tool files (BqlQueryTool, EchoTool, etc.) intentionally
+  remain Russian — translating those changes the AI-client view of
+  the tools (deferred to v0.5 i18n release).
+
+### Removed
+
+- **12 unused classes from `com.niagaramcp.json`**:
+  `CDL`, `Cookie`, `CookieList`, `HTTP`, `HTTPTokener`, `JSONML`,
+  `Property`, `Test`, `XML`, `XMLParserConfiguration`, `XMLTokener`,
+  `XMLXsiTypeConverter`. Verified none are transitively reachable
+  from the 3 classes our server code actually imports
+  (`JSONArray`, `JSONObject`, `JSONTokener`). Recovered ~36 KB
+  of jar size.
+
+### Fixed
+
+- bajadoc UTF-8 encoding (already mitigated in v0.3.1 via
+  `tasks.withType<Javadoc> { options.encoding = "UTF-8" }`); now
+  fully resolved in the JSON library by source-level translation.
+
+### Build / size
+
+- Jar: **213 KB** (v0.3.1 baseline 243 KB → −30 KB / −12 %).
+  Below the v0.4 brief target ≤ 220 KB; ideal < 200 KB not yet
+  reached.
+- Class count: 110 → 96 (12 removed JSON files contained 16
+  classes; 1 added by ToolSchemaHelpers + GetDiagnosticDumpTool).
+- `tools/list` count: 34 → 35.
+
+### Compatibility
+
+- v0.3.1 (and v0.3.0/v0.2.0/v0.1.0) endpoints unchanged.
+- All 34 v0.3.1 tools work bit-for-bit; new `getDiagnosticDump`
+  is purely additive.
+- Default state: both transports enabled, behaviour identical to
+  v0.3.1.
+- Operators using the deleted JSON helper classes (`XML.toJSONObject`,
+  `CDL.parse`, etc.) for their own modules need to either copy
+  the classes into their codebase or depend on a separate JSON
+  library. None of these were public API niagaramcp committed to.
 
 ---
 
@@ -332,7 +428,8 @@ improvements. No breaking changes; all v0.3.0 endpoints unchanged.
 - Нет audit-trail для `writePoint`/`bqlQuery`.
 - Подробности и предлагаемые mitigations — в [`_CODE_REVIEW.md`](./_CODE_REVIEW.md).
 
-[Unreleased]: https://github.com/<owner>/<repo>/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/<owner>/<repo>/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/<owner>/<repo>/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/<owner>/<repo>/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/<owner>/<repo>/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/<owner>/<repo>/compare/v0.1.0...v0.2.0

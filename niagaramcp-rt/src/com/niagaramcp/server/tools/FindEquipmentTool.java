@@ -16,6 +16,7 @@ import java.util.Locale;
 public final class FindEquipmentTool implements Tool {
 
   @Override public String name()        { return "findEquipment"; }
+  @Override public String getCategory() { return "search"; }
   @Override public String description() {
     return "Find equipment matching a query string. Searches name + aliases + id, " +
            "case-insensitive substring. Returns ranked matches.";

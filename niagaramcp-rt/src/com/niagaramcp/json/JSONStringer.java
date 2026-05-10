@@ -3,8 +3,8 @@ package com.niagaramcp.json;
 import java.io.StringWriter;
 
 /**
- * {@link JSONWriter}, результатом работы которого является строка,
- * собираемая во внутренний {@link StringWriter}.
+ * A {@link JSONWriter} whose output is a String collected into an
+ * internal {@link StringWriter}.
  */
 public class JSONStringer extends JSONWriter {
    public JSONStringer() {

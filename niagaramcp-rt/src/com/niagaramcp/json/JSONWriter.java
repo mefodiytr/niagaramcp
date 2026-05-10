@@ -5,8 +5,8 @@ import java.util.Collection;
 import java.util.Map;
 
 /**
- * Поточная запись JSON-текста: позволяет последовательно формировать
- * JSON-объекты и массивы в целевой {@link Appendable}.
+ * Streaming JSON writer: build JSON objects and arrays sequentially
+ * into a target {@link Appendable}.
  */
 public class JSONWriter {
    private static final int maxdepth = 200;

@@ -27,6 +27,7 @@ public final class FindUnmappedComponentsTool implements Tool {
   private static final int MAX_LIMIT = 1000;
 
   @Override public String name()        { return "findUnmappedComponents"; }
+  @Override public String getCategory() { return "management"; }
   @Override public String description() {
     return "List Niagara components matching typeName that are NOT referenced by any " +
            "knowledge equipment.ord, equipment.points, or standalonePoint.ord. Useful " +
