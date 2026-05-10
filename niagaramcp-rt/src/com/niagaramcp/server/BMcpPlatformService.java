@@ -48,6 +48,7 @@ import com.niagaramcp.server.tools.AssignPointToEquipmentTool;
 import com.niagaramcp.server.tools.BqlQueryTool;
 import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
 import com.niagaramcp.server.tools.CheckKnowledgeIntegrityTool;
+import com.niagaramcp.server.tools.CreateComponentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
 import com.niagaramcp.server.tools.CreateSpaceTool;
@@ -337,6 +338,8 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new GetDiagnosticDumpTool());
     // v0.4.1 diagnostics — static feature inventory
     r.register((Tool) new GetFeatureDumpTool());
+    // v0.5: first user-Context write tool (reference for the M1 set)
+    r.register((Tool) new CreateComponentTool());
     REGISTRY = r;
 
     // v0.3 — Resources

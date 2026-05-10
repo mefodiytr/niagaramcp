@@ -361,6 +361,20 @@ public final class McpProtocol {
 
     JSONObject result = new JSONObject();
     result.put("content", contentArr);
+
+    // v0.5: auto-promote JSON-shaped text result to structuredContent
+    // per MCP 2025-06-18 §5.4. Pure addition — old MCP clients keep
+    // reading content[0].text exactly as before; new clients prefer the
+    // typed structuredContent. Tools that return non-JSON text (errors,
+    // plain string responses) skip this branch silently.
+    if (!isError && text != null && !text.isEmpty()) {
+      char first = text.charAt(0);
+      if (first == '{') {
+        try {
+          result.put("structuredContent", new JSONObject(new JSONTokener(text)));
+        } catch (Exception ignored) { /* not valid JSON object — text-only */ }
+      }
+    }
     result.put("isError", isError);
     return result;
   }

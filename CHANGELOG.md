@@ -14,16 +14,86 @@ permissions instead of the service identity. Branch
 
 ### Added (so far)
 
+- **User-Context auth**: bearer tokens now resolve to `BUser` (via
+  per-user `mcp:tokenHash` tag, salted SHA-256, constant-time
+  compare). The legacy `apiToken` continues to authenticate as a
+  read-only service identity for monitoring and read tools — write
+  tools that require a real user reject it with `-32011`.
+- New `BMcpPlatformService.tokenSalt` property (read-only, lazy-
+  generated on first start) — base64 16-byte SecureRandom.
+- New `auth.UserContextGateway.run(BUser, OpDesc, args, sessionId,
+  ContextAwareWork<T>)` — single entry point for write tools.
+  Builds `BasicContext(user)`, wraps `PermissionException` into
+  `-32010` with rich `data{user, ord, operation, tool}`, emits one
+  audit record per call.
+- New `audit.*` package: `Audit.install/emit` facade, immutable
+  `AuditRecord`, `JsonlAuditWriter` (primary, JSON-line append to
+  `<userHome>/niagaramcp/niagaramcp.audit.log`), redactor with
+  default key blacklist `(password|secret|token|apikey|passcode|
+  pwd|credential)` + 256-char string truncation,
+  `BAuditHistoryServiceAdapter` (best-effort secondary, reflection-
+  only, no compile-time dep on `history-rt` so lightweight JACE
+  installs aren't blocked).
+- Tool interface: 2 new default methods — `requiresUserContext()`
+  (default `false`) and `annotations()` (default
+  `ToolAnnotations.READ_ONLY`). Per MCP 2025-06-18 §6.1, every
+  `tools/list` row now carries `annotations:{readOnlyHint,
+  destructiveHint, idempotentHint, openWorldHint}` plus
+  niagaramcp's `requiresUserContext` extension. Existing 36 tools
+  inherit defaults — zero touch.
+- Pre-dispatch gate: `tools/call` for any tool with
+  `requiresUserContext=true` rejects bearer→service-identity (i.e.
+  apiToken) with `-32011 ERR_USER_NOT_FOUND` before the tool body
+  runs.
+- Auto-promote of JSON-string tool results to MCP
+  `result.structuredContent` (per spec §5.4) — purely additive,
+  legacy clients continue to read `content[0].text`.
+- New tool **`createComponent`** (category `write`, annotations
+  `MUTATION`, requiresUserContext): reference write-tool that adds
+  a fresh `BComponent` of a given Type as a child of an existing
+  parent, under the calling user's permissions. Args:
+  `{parentOrd, type, name, nameStrategy?:"fail"|"suffix"}`,
+  default strategy `"fail"`. Returns
+  `{ord, displayName, requestedName, resolvedName}` in both
+  `content[0].text` and `structuredContent`.
 - 2 new JSON-RPC error codes:
   - **`-32010` ERR_PERMISSION_DENIED** — wraps
     `javax.baja.security.PermissionException`. `error.data` carries
-    `{user, ord, operation}` captured at the call-site (the underlying
-    PermissionException only exposes a string message, no rich payload).
+    `{user, ord, operation, tool, detail}` captured at the call-site
+    (the underlying PermissionException only exposes a string
+    message, no rich payload).
   - **`-32011` ERR_USER_NOT_FOUND** — Bearer presented but does not
     resolve to any `BUser` via the `mcp:tokenHash` tag walk. Distinct
     from HTTP 401: 401 fires when no Bearer at all, -32011 fires when
     a Bearer authenticated against `apiToken` is used to call a tool
     whose `requiresUserContext()` is true.
+
+### Known follow-ups (v0.5.x / v0.6)
+
+- TagDictionary auto-bootstrap currently checks for an existing
+  `mcp:` dictionary registration but does not construct one
+  programmatically (would require building a populated
+  `BTagInfoList`). Operator can add a `BTagDictionaryFile` under
+  `Services/TagDictionaryService` for Workbench TagBrowser
+  visibility — token tag write/read works without it.
+- JSONL audit log size-rotation deferred to v0.5.x (operator
+  logrotate handles it for now).
+- Operator-configurable redaction pattern via
+  `BMcpPlatformService.auditRedactPattern` deferred to v0.5.x.
+- Workbench action `generateUserToken(BString)` and MCP tool
+  `rotateMcpToken` deferred to v0.5.x — for v0.5 operators write
+  tag values manually using `TokenHasher.main()` to compute the
+  hex hash.
+- `writePoint` retrofit to `requiresUserContext=true` deferred to
+  v0.5.x once operator-side rollout is confirmed (avoids breaking
+  existing v0.4-style smoke tests).
+- M1 write-tools remaining: `removeComponent`, `setSlot`,
+  `invokeAction`, `addExtension`, `linkSlots`/`unlinkSlots`,
+  `commitStation` — all follow the `createComponent` reference
+  shape, queued for v0.5.1+.
+- Backfill `structuredContent` is automatic for any existing tool
+  whose `text` payload is already a JSON object — no per-tool
+  changes needed; clients see the new field immediately on v0.5.
 
 ### Planned
 
