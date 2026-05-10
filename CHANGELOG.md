@@ -5,6 +5,105 @@ All notable changes to **niagaramcp** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — v0.5.1 write-tools tail (stacked on v0.5)
+
+M1 write-tool set complete. Each tool follows the v0.5
+`createComponent` reference shape: requiresUserContext=true,
+ToolAnnotations.MUTATION (or DESTRUCTIVE), audited via
+`UserContextGateway`, errors mapped to the existing -32010 /
+-32011 envelope.
+
+### Added
+
+- 6 new `category: "write"` tools — all under user-Context, all
+  audited:
+  - **`removeComponent`** (DESTRUCTIVE) — `parent.remove(slot, cx)`
+    with default `dryRun=true` and inbound-link safety check
+    (refuse if `target.getLinks()` non-empty unless `force=true`).
+    Honest limitation: only INBOUND links detected (links stored
+    on this component as slots); outbound (component-as-source)
+    requires a station walk and is queued for v0.6. Args:
+    `{ord, dryRun?, force?}`.
+  - **`setSlot`** (MUTATION) — `BComplex.set(prop, value, cx)`
+    with type coercion to the slot's existing BSimple class
+    (BString/BBoolean/BInteger/BLong/BFloat/BDouble). Complex
+    types (BStatusValue / BFacets / BOrd / ...) refuse with
+    -32602 + hint pointing at type-specific tools (writePoint
+    already handles BStatusValue priority slots). Args:
+    `{ord, slotName, value}`.
+  - **`invokeAction`** (MUTATION) — `BComponent.invoke(Action,
+    BValue, cx)` with parameter coercion mirroring setSlot.
+    Args: `{ord, actionName, args?}`. Returns
+    `{returnValue, returnType, durationMs}`. Complex parameter
+    types refuse the same way.
+  - **`addExtension`** (MUTATION) — `parent.add(name, ext, cx)`
+    for extension types (history / alarm / proxy ext, ...).
+    Mechanically same as createComponent but with separate UX
+    framing for MCP-aware clients. v0.5.1 doesn't pre-check
+    type-applicability; Niagara's add()-time validation surfaces
+    incompatible pairs as -32603. Args:
+    `{parentOrd, extensionType, name, nameStrategy?:"fail"|"suffix"}`.
+  - **`linkSlots`** (MUTATION) — `sink.makeLink(source,
+    sourceSlot, sinkSlot, cx)` then `sink.add(linkName, link, cx)`.
+    Uses Niagara's own `checkLink()` predicate; type mismatch →
+    -32016. Auto-pick converter (`convert: true`) is NOT
+    implemented in v0.5.1 — design Q6 picks explicit
+    `converterType` arg, deferred to v0.5.2 with the converter-
+    registry walk story. Args:
+    `{sourceOrd, sourceSlot, sinkOrd, sinkSlot, linkName?}`.
+  - **`unlinkSlots`** (DESTRUCTIVE) — `sink.remove(linkProperty,
+    cx)`. Refuses if the ord isn't a BLink (use removeComponent
+    for non-link slots). Args: `{linkOrd}`. Captures the wire info
+    (source/sink ord + slot names) into the result for audit /
+    manual undo, since Niagara has no built-in undo.
+  - **`commitStation`** (MUTATION) — `BStation.doSave(Context)`
+    under user-Context. Use after a batch of mutations when
+    ack-without-persistence (~30s auto-save delay) is unacceptable.
+    Args: `{}`. Returns `{saved, stationName, durationMs}`.
+- 4 new JSON-RPC error codes (-32013..-32016):
+  - **`-32013` ERR_COMPONENT_HAS_INBOUND_LINKS** — `removeComponent`
+    refused due to inbound links + `force=false`. data carries
+    `{ord, inboundLinkCount, sampleSourceOrds[≤5]}`.
+  - **`-32014` ERR_ACTION_NOT_FOUND** — `invokeAction` action name
+    not on the target.
+  - **`-32015` ERR_EXTENSION_NOT_APPLICABLE** — declared, will be
+    activated by `addExtension` pre-check in v0.5.2.
+  - **`-32016` ERR_LINK_TYPE_MISMATCH** — `linkSlots` refused due
+    to source/sink type incompatibility (Niagara `LinkCheck`
+    invalid). data carries `{sourceOrd, sourceSlot, sinkOrd,
+    sinkSlot, reason}`.
+- Smoke client +6 steps (26-31): own throwaway fixture via
+  createComponent, exercise setSlot / invokeAction error path /
+  commitStation / removeComponent dryRun + actual cleanup.
+  `--skip-v051` flag added.
+
+### Tools count
+
+`tools/list` 38 → **45** (+7). `category: "write"` row in tools
+catalog goes from 1 (`writePoint`) and 1 (`createComponent`) in
+v0.5 → all 8 tools listed below in v0.5.1. M1 set complete:
+createComponent, removeComponent, setSlot, invokeAction,
+addExtension, linkSlots, unlinkSlots, commitStation.
+
+### Known follow-ups (v0.5.2 / v0.6)
+
+- Auto-pick `BTypeConverter` for linkSlots (`convert: true` flag +
+  named `converterType` arg).
+- `addExtension` type-applicability pre-check + active
+  -32015 mapping.
+- `BValueCoercer` helper deduping setSlot ↔ invokeAction primitive
+  coercion (cosmetic).
+- Smoke e2e fixtures for addExtension / linkSlots / unlinkSlots
+  (need station-specific helper for compatible point pairs).
+- Outbound-link detection for removeComponent (full station walk;
+  v0.6 with batched indexer).
+- `clearSlot` tool — distinct from setSlot (reset to type default,
+  not null).
+- `unlinkSlots` ergonomic args `{sinkOrd, linkName}` alongside
+  current `{linkOrd}` form.
+
+---
+
 ## [Unreleased] — v0.5 user-context work in progress
 
 User-Context gateway + per-user audit, foundation for write-tools that

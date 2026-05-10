@@ -335,6 +335,45 @@ JSON-ответ.
 
 ---
 
+## M1 write-tool tail (v0.5.1)
+
+Stacked-on-v0.5 patch. Закрывает M1 write-tool set: 6 новых tools
++ commitStation, все под v0.5 user-Context gateway, все
+audit'ируются. Никакой новой инфраструктуры — чистые tool
+additions по `createComponent` reference shape.
+
+### 7 новых tools (все `category: "write"`, `requiresUserContext: true`)
+
+| Tool | annotations | Назначение |
+|---|---|---|
+| `removeComponent` | `DESTRUCTIVE` | `parent.remove(slot, cx)`. Default `dryRun=true` + inbound-link safety check. Outbound (компонент-как-source) detection отложен в v0.6 (требует station walk). |
+| `setSlot` | `MUTATION` | Type-coerced `BComplex.set(prop, value, cx)` для BSimple slot types. Complex types (BStatusValue/BFacets/...) — refuse с -32602 + hint. |
+| `invokeAction` | `MUTATION` | `BComponent.invoke(Action, BValue, cx)` с parameter coercion как в setSlot. Returns `{returnValue, returnType, durationMs}`. |
+| `addExtension` | `MUTATION` | `parent.add(name, ext, cx)` для extension types. v0.5.1 без pre-check applicability; Niagara валидирует в add(), -32603 → -32015 после v0.5.2. |
+| `linkSlots` | `MUTATION` | `sink.makeLink(...) + sink.add(linkName, link, cx)` после Niagara `checkLink()`. Type mismatch → -32016 с reason. Auto-pick converter — v0.5.2. |
+| `unlinkSlots` | `DESTRUCTIVE` | `sink.remove(linkProperty, cx)`. Refuses non-link ords. Захватывает wire info (source/sink + slots) в result для audit / manual undo. |
+| `commitStation` | `MUTATION` | `BStation.doSave(Context)` под user-Context. Use после batch когда ack-without-persistence (~30s auto-save delay) неприемлем. |
+
+### 4 новых error code
+
+| Код | Symbol | Когда |
+|---|---|---|
+| `-32013` | `ERR_COMPONENT_HAS_INBOUND_LINKS` | `removeComponent` refused; `data{ord, inboundLinkCount, sampleSourceOrds[≤5]}`. |
+| `-32014` | `ERR_ACTION_NOT_FOUND` | `invokeAction` action не найден. |
+| `-32015` | `ERR_EXTENSION_NOT_APPLICABLE` | Зарезервирован; активируется когда v0.5.2 добавит pre-check. |
+| `-32016` | `ERR_LINK_TYPE_MISMATCH` | `linkSlots` Niagara `LinkCheck` invalid; `data{sourceOrd, sourceSlot, sinkOrd, sinkSlot, reason}`. |
+
+### Smoke
+
+`+6` шагов (26-31) под существующим v0.5 pre-flight: throwaway
+fixture через createComponent → setSlot → invokeAction error path
+→ commitStation → removeComponent dryRun preview → removeComponent
+actual cleanup. `--skip-v051` opts out. addExtension / linkSlots /
+unlinkSlots e2e fixtures отложены в v0.5.2 (нужен station-specific
+helper).
+
+---
+
 ## User-Context gateway и per-user audit (v0.5)
 
 Foundation-релиз для write-tools, мутирующих station-component-tree

@@ -319,7 +319,7 @@ clients can group tools in their UI:
 |---|---|
 | `transport-test` | `echo` |
 | `read` | `listChildren`, `readPoint`, `bqlQuery` |
-| `write` | `writePoint`, **`createComponent`** *(v0.5, requires user-Context)* |
+| `write` | `writePoint`, `createComponent` *(v0.5)*, **`removeComponent`**, **`setSlot`**, **`invokeAction`**, **`addExtension`**, **`linkSlots`**, **`unlinkSlots`**, **`commitStation`** *(all v0.5.1, requires user-Context)* |
 | `walkthrough-read` | `getOverview`, `inspectComponent`, `findComponentsByType`, `getSlots` |
 | `walkthrough-write` | 10 walkthrough writers |
 | `management` | `getKnowledgeSummary`, `findUnmappedComponents`, `exportKnowledge`, `importKnowledge`, `reloadKnowledge` |
@@ -345,6 +345,46 @@ informational only.
 12 unused JSON utility classes (`XML`, `CDL`, `Cookie`, `HTTP`, etc.)
 removed from the embedded `com.niagaramcp.json` package. Jar size
 243 KB → 213 KB (−30 KB / −12%).
+
+---
+
+## M1 write-tool tail (v0.5.1)
+
+Stacked-on-v0.5 patch. Closes the M1 write-tool set with 6 more
+tools + commitStation, all under the v0.5 user-Context gateway,
+all audited. No new infrastructure — pure tool additions following
+the `createComponent` reference shape.
+
+### 7 new tools (all `category: "write"`, `requiresUserContext: true`)
+
+| Tool | annotations | Purpose |
+|---|---|---|
+| `removeComponent` | `DESTRUCTIVE` | `parent.remove(slot, cx)`. Default `dryRun=true` + inbound-link safety check (refuse if `target.getLinks()` non-empty unless `force=true`). Outbound-link detection is queued for v0.6 (needs station walk). |
+| `setSlot` | `MUTATION` | Type-coerced `BComplex.set(prop, value, cx)` for BSimple slot types (BString/BBoolean/BInteger/BLong/BFloat/BDouble). Complex types refuse with -32602 + hint. |
+| `invokeAction` | `MUTATION` | `BComponent.invoke(Action, BValue, cx)` with parameter coercion mirroring setSlot. Returns `{returnValue, returnType, durationMs}`. |
+| `addExtension` | `MUTATION` | `parent.add(name, ext, cx)` for extension types. v0.5.1 doesn't pre-check applicability; Niagara's add()-time validation surfaces incompatible pairs as -32603 (will become -32015 after v0.5.2 pre-check). |
+| `linkSlots` | `MUTATION` | `sink.makeLink(...) + sink.add(linkName, link, cx)` after Niagara's `checkLink()` predicate. Type mismatch → -32016 with reason. Auto-pick converter (`convert: true`) deferred to v0.5.2. |
+| `unlinkSlots` | `DESTRUCTIVE` | `sink.remove(linkProperty, cx)`. Refuses non-link ords (use removeComponent). Captures wire info (source/sink ord + slots) into result for audit / manual undo. |
+| `commitStation` | `MUTATION` | `BStation.doSave(Context)` under user-Context. Use after a batch when ack-without-persistence (~30s auto-save delay) is unacceptable. |
+
+### 4 new JSON-RPC error codes
+
+| Code | Symbol | Trigger |
+|---|---|---|
+| `-32013` | `ERR_COMPONENT_HAS_INBOUND_LINKS` | `removeComponent` refused; `data{ord, inboundLinkCount, sampleSourceOrds[≤5]}`. |
+| `-32014` | `ERR_ACTION_NOT_FOUND` | `invokeAction` action name not on the target. |
+| `-32015` | `ERR_EXTENSION_NOT_APPLICABLE` | Reserved; activated when v0.5.2 adds pre-check. |
+| `-32016` | `ERR_LINK_TYPE_MISMATCH` | `linkSlots` Niagara `LinkCheck` invalid; `data{sourceOrd, sourceSlot, sinkOrd, sinkSlot, reason}`. |
+
+### Smoke
+
+`+6` steps (26-31) under the existing v0.5 pre-flight (test BUser
++ `enableTestSetup=true`): own throwaway fixture via
+createComponent → setSlot → invokeAction error path →
+commitStation → removeComponent dryRun preview → removeComponent
+actual cleanup. `--skip-v051` opts out. addExtension / linkSlots
+/ unlinkSlots e2e fixtures need station-specific setup; deferred
+to v0.5.2.
 
 ---
 

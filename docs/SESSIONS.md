@@ -1,7 +1,110 @@
-# Session notes: v0.2.0 → v0.5 release work
+# Session notes: v0.2.0 → v0.5.1 release work
 
-**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1 → v0.5
+**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1 → v0.5 → v0.5.1
 **Время:** несколько сессий, май 2026.
+
+---
+
+## v0.5.1 — M1 write-tools tail (2026-05-10)
+
+**Branch:** `v0.5.1-write-tools` — **stacked на `v0.5-user-context`**
+(оба unmerged). Rebase plan на main после merge'а v0.5 — content
+identical, hashes change.
+**Commits:** 8 атомарных. **LOC:** +1 662 / −5 = **+1 657 net**.
+**Jar:** ≈230 KiB (v0.5) → ≈238 KiB estimated.
+
+### Что добавлено
+
+- **6 новых write-tools** (плюс v0.5 createComponent = M1 set
+  complete):
+  - `removeComponent` (DESTRUCTIVE) — `parent.remove(slot, cx)`,
+    default `dryRun=true`, inbound-link safety check,
+    `force=true` override. Outbound (component-as-source) detection
+    отложено до v0.6 (требует station walk).
+  - `setSlot` (MUTATION) — `BComplex.set(prop, value, cx)` с
+    BSimple coercion (BString/BBoolean/BInteger/BLong/BFloat/BDouble).
+    Complex types (BStatusValue/BFacets/...) — refuse с -32602 +
+    hint.
+  - `invokeAction` (MUTATION) — `BComponent.invoke(Action, BValue, cx)`,
+    parameter coercion из default's class. Returns `{returnValue,
+    returnType, durationMs}`.
+  - `addExtension` (MUTATION) — `parent.add(name, extInstance, cx)`
+    для extension types. v0.5.1 без type-applicability pre-check
+    (Niagara валидирует в add(), -32603); pre-check + dedicated
+    -32015 — v0.5.2.
+  - `linkSlots` (MUTATION) — `sink.makeLink(source, sourceSlot,
+    sinkSlot, cx) + sink.add(linkName, link, cx)`. Pre-check через
+    `sink.checkLink(...)` → `LinkCheck.isValid()` → -32016
+    ERR_LINK_TYPE_MISMATCH с reason. Auto-pick converter
+    (`convert: true`) — отложено в v0.5.2.
+  - `unlinkSlots` (DESTRUCTIVE) — `sink.remove(linkProperty, cx)`.
+    Refuse если ord не BLink (предотвращает случайное удаление
+    обычных компонент).
+  - `commitStation` (MUTATION) — `BStation.doSave(Context)` под
+    user-Context. Использует Context-taking variant вместо
+    no-arg `save()` чтобы permission-check работал через gateway.
+- **4 новых error code** (-32013..-32016):
+  - `ERR_COMPONENT_HAS_INBOUND_LINKS` (removeComponent refused)
+  - `ERR_ACTION_NOT_FOUND` (invokeAction)
+  - `ERR_EXTENSION_NOT_APPLICABLE` (declared, активно используется
+    с v0.5.2)
+  - `ERR_LINK_TYPE_MISMATCH` (linkSlots checkLink failure)
+- **Smoke client +6 шагов** (26-31): createComponent fixture →
+  setSlot → invokeAction error-path → commitStation →
+  removeComponent dryRun preview → removeComponent actual cleanup.
+  Total: 25 (v0.5) → 31 (v0.5.1). Reuses v0.5 pre-flight (test
+  BUser, enableTestSetup).
+
+### Что обнаружилось при разработке
+
+- **`BStation` имеет и `save()`, и `doSave(Context)`.** No-arg
+  variant — convenience, идёт под default cx (= service identity);
+  Context-taking — propagates user identity. Используем второй для
+  audit'а.
+- **`BLink` хранится как child slot на sink-компоненте.**
+  Поэтому `sink.getLinks()` возвращает inbound links — этого
+  достаточно для removeComponent safety check без station walk.
+- **`LinkCheck` API чистый**: `BComponent.checkLink(...)` отдаёт
+  `LinkCheck` с `isValid()` + `getInvalidReason()`. Niagara сама
+  type-compatibility predicate, мы только surface причину в
+  -32016 data.
+- **`BComplex.getPropertyInParent()` — каноничный slot resolver**.
+  Initial RemoveComponentTool draft использовал
+  `parent.getProperty(target.getSlot(target))` который не
+  composes; recon поправил до commit'а. Same fix применился в
+  unlinkSlots.
+
+### Что отложено в v0.5.2 / v0.6
+
+- Auto-pick `BTypeConverter` на link-mismatch (convert flag +
+  named converterType).
+- `addExtension` type-applicability pre-check + активация
+  -32015.
+- `BValueCoercer` helper — dedupe SetSlot ↔ InvokeAction
+  primitive coercion (cosmetic).
+- `unlinkSlots` ergonomic args `{sinkOrd, linkName}` (alongside
+  current `{linkOrd}`).
+- Smoke e2e fixtures для addExtension / linkSlots / unlinkSlots
+  (требуют station-specific helper).
+- `clearSlot` tool (отдельная семантика от setSlot — reset to
+  type default).
+
+### Branch state
+
+- `v0.5.1-write-tools` — unmerged (stacked).
+- `v0.5-user-context` — unmerged (under review).
+- `main` — at v0.4.1 merge.
+- Stack: main (v0.4.1) → v0.5-user-context (11 commits) →
+  v0.5.1-write-tools (8 commits).
+
+### Surprises
+
+- M1-tail оказался mechanically rep — все tools follow
+  createComponent reference shape (resolve / validate / OpDesc /
+  gateway.run). Каждый tool ≈ 200-280 LOC, без новой
+  архитектурной работы.
+- 7-tool batch shipped в одном branch'е без блокеров — recon из
+  v0.5 design pass покрыл API surface'ы заранее.
 
 ---
 
