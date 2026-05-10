@@ -38,4 +38,35 @@ public interface Tool {
    *         management, search, history, alarms, diagnostic.
    */
   default String getCategory() { return "general"; }
+
+  /**
+   * @return {@code true} iff this tool needs a real Niagara user identity
+   *         (not the service identity / apiToken). When {@code true}, the
+   *         servlet pre-dispatch in {@code McpServlet.handle*} resolves
+   *         the bearer to a {@code BUser} via {@code BearerResolver};
+   *         on miss, returns {@code -32011 ERR_USER_NOT_FOUND} before
+   *         {@link #call(com.niagaramcp.json.JSONObject)} is invoked.
+   *
+   * <p>Default {@code false} preserves backward compatibility — every
+   *         existing read-only / diagnostic tool runs under whatever
+   *         identity the bearer presents, including the read-only
+   *         service identity backing {@code apiToken}.
+   *
+   * <p>v0.5 introduces this hook; the first tool to set it {@code true}
+   *         is {@code createComponent} (commit 9). Later commits will
+   *         retrofit {@code writePoint} once safe to gate it behind
+   *         user-Context as well.
+   */
+  default boolean requiresUserContext() { return false; }
+
+  /**
+   * @return MCP-spec tool annotations (readOnly / destructive /
+   *         idempotent / openWorldHint) advertised in {@code tools/list}.
+   *         Default {@link ToolAnnotations#READ_ONLY} — every existing
+   *         tool is read-only or returns its result without modifying
+   *         externally-observable state. New write-tools must override
+   *         with {@link ToolAnnotations#MUTATION} or
+   *         {@link ToolAnnotations#DESTRUCTIVE}.
+   */
+  default ToolAnnotations annotations() { return ToolAnnotations.READ_ONLY; }
 }

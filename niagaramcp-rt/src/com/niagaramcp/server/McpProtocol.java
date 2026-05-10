@@ -80,7 +80,26 @@ public final class McpProtocol {
    */
   public static final int ERR_USER_NOT_FOUND        = -32011;
 
+  /**
+   * Backward-compatible entry — assumes no user-Context resolved
+   * (callers from pre-v0.5 code paths). Tools whose
+   * {@code requiresUserContext()} is true will get
+   * {@code -32011 ERR_USER_NOT_FOUND}.
+   */
   public static JSONObject handle(JSONObject request, ToolRegistry registry, Session session) {
+    return handle(request, registry, session, null);
+  }
+
+  /**
+   * v0.5 entry — accepts the {@link javax.baja.user.BUser} resolved by
+   * {@code BearerResolver} from the request's Bearer token.
+   * {@code resolvedUser} is {@code null} when the bearer matched the
+   * read-only {@code apiToken} (service identity) instead of a real
+   * user; tools whose {@code requiresUserContext()} is true reject in
+   * that case via {@link #ERR_USER_NOT_FOUND}.
+   */
+  public static JSONObject handle(JSONObject request, ToolRegistry registry,
+                                  Session session, javax.baja.user.BUser resolvedUser) {
     Object id = request.has("id") ? request.get("id") : null;
     boolean isNotification = !request.has("id");
     String method = request.optString("method", "");
@@ -106,7 +125,7 @@ public final class McpProtocol {
         return ok(id, buildToolsList(registry));
       }
       if ("tools/call".equals(method)) {
-        return ok(id, callTool(registry, params));
+        return ok(id, callTool(registry, params, resolvedUser, session));
       }
       // v0.3 — resources
       if ("resources/list".equals(method)) {
@@ -276,6 +295,11 @@ public final class McpProtocol {
         one.put("category", t.getCategory());            // v0.4: client-side grouping
         one.put("description", t.description());
         one.put("inputSchema", new JSONObject(new JSONTokener(t.schemaJson())));
+        // v0.5: MCP 2025-06-18 §6.1 tool annotations
+        one.put("annotations", t.annotations().toJson());
+        // v0.5: niagaramcp extension — auth requirement hint for clients
+        // that want to surface "this tool requires a user-Context bearer".
+        one.put("requiresUserContext", t.requiresUserContext());
         arr.put(one);
       }
     }
@@ -284,7 +308,8 @@ public final class McpProtocol {
     return result;
   }
 
-  private static JSONObject callTool(ToolRegistry registry, JSONObject params) {
+  private static JSONObject callTool(ToolRegistry registry, JSONObject params,
+                                     javax.baja.user.BUser resolvedUser, Session session) {
     if (registry == null) {
       throw new RpcException(ERR_INTERNAL, "Tool registry not initialized");
     }
@@ -295,10 +320,26 @@ public final class McpProtocol {
       data.put("toolName", name);
       throw new RpcException(ERR_TOOL_NOT_FOUND, "Unknown tool: " + name, data);
     }
+    // v0.5: gate tools that require user-Context. Bearer either matched
+    // apiToken (resolvedUser=null = service identity) or didn't resolve
+    // to a BUser via the mcp:tokenHash walk → reject before dispatch.
+    if (t.requiresUserContext() && resolvedUser == null) {
+      JSONObject data = new JSONObject();
+      data.put("tool", name);
+      data.put("requiresUserContext", true);
+      throw new RpcException(ERR_USER_NOT_FOUND,
+          "Tool '" + name + "' requires a user-Context bearer (apiToken " +
+          "matches the service identity, not a BUser)", data);
+    }
     JSONObject args = params.optJSONObject("arguments");
     if (args == null) {
       args = new JSONObject();
     }
+
+    // v0.5: stash {resolvedUser, sessionId} in a thread-local so the
+    // tool body can pull them when invoking UserContextGateway.run(...).
+    // Cleared in finally — never leaks across requests.
+    CallContext.set(resolvedUser, session == null ? "" : session.getSessionId());
 
     String text;
     boolean isError = false;
@@ -307,6 +348,8 @@ public final class McpProtocol {
     } catch (Exception e) {
       text = "Error: " + e.getMessage();
       isError = true;
+    } finally {
+      CallContext.clear();
     }
 
     JSONObject content = new JSONObject();

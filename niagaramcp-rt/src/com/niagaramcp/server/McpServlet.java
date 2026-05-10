@@ -174,7 +174,8 @@ public final class McpServlet extends UnauthenticatedServlet {
       }
     }
 
-    JSONObject response = McpProtocol.handle(request, BMcpPlatformService.getRegistry(), session);
+    javax.baja.user.BUser resolvedUser = resolveBearerToUser(req);
+    JSONObject response = McpProtocol.handle(request, BMcpPlatformService.getRegistry(), session, resolvedUser);
     if (response == null) {
       // Notification — no body to deliver.
       resp.setStatus(202);
@@ -313,7 +314,8 @@ public final class McpServlet extends UnauthenticatedServlet {
       return;
     }
 
-    JSONObject response = McpProtocol.handle(request, BMcpPlatformService.getRegistry(), sseSession);
+    javax.baja.user.BUser resolvedUser = resolveBearerToUser(req);
+    JSONObject response = McpProtocol.handle(request, BMcpPlatformService.getRegistry(), sseSession, resolvedUser);
     if (response != null) {
       sseSession.enqueue(response.toString());
     }
@@ -401,11 +403,32 @@ public final class McpServlet extends UnauthenticatedServlet {
       return false;
     }
     String token = header.substring(7).trim();
-    if (!expected.equals(token)) {
-      sendUnauthorized(resp, "Invalid token");
-      return false;
-    }
-    return true;
+    // Either matches the read-only service apiToken (legacy / monitoring),
+    // or resolves to a BUser via the mcp:tokenHash tag walk (v0.5).
+    if (expected.equals(token)) return true;
+    if (com.niagaramcp.server.auth.BearerResolver.resolve(token).isPresent()) return true;
+    sendUnauthorized(resp, "Invalid token");
+    return false;
+  }
+
+  /**
+   * v0.5: re-resolve the bearer to a {@link javax.baja.user.BUser} if it
+   * matches a user's {@code mcp:tokenHash} tag. Returns {@code null} when
+   * the bearer matches the service-identity {@code apiToken} (in which
+   * case the request runs under service identity — fine for read-only
+   * tools, rejected by tools whose {@code requiresUserContext()} is true).
+   *
+   * <p>Called once per request after {@link #checkAuth} has already
+   * validated the token. Re-resolves rather than caching so token rotation
+   * takes effect on the next request without per-session invalidation.
+   */
+  private static javax.baja.user.BUser resolveBearerToUser(HttpServletRequest req) {
+    String header = req.getHeader("Authorization");
+    if (header == null || !header.startsWith("Bearer ")) return null;
+    String token = header.substring(7).trim();
+    String apiToken = BMcpPlatformService.apiToken();
+    if (apiToken != null && apiToken.equals(token)) return null;  // service identity
+    return com.niagaramcp.server.auth.BearerResolver.resolve(token).orElse(null);
   }
 
   private static void sendUnauthorized(HttpServletResponse resp, String body) throws IOException {
