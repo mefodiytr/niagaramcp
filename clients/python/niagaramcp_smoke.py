@@ -406,6 +406,140 @@ def run_v030_tests(client):
     return p, f
 
 
+# ─── v0.3.1 diagnostics + /health ─────────────────────────────────────────────
+def run_v031_tests(client, base, insecure=False):
+    """v0.3.1-specific diagnostic tools + unauthenticated /health."""
+    p, f = 0, 0
+
+    step(14, "Fresh initialize for v0.3.1 tests")
+    client.session_id = None
+    status, headers, body = client.initialize()
+    if status == 200:
+        sid = headers.get("Mcp-Session-Id") or headers.get("mcp-session-id")
+        client.session_id = sid
+        ok(f"new session: {sid[:12]}...")
+        p += 1
+    else:
+        fail(f"HTTP {status}")
+        f += 1
+        return p, f
+
+    step(15, "tools/call getServerInfo (verify version + knowledgeFile + transports)")
+    status, _, body = client.tools_call("getServerInfo", {}, request_id=15)
+    if status == 200:
+        j = parse_json(body)
+        content = j.get("result", {}).get("content", []) if j else []
+        text = content[0].get("text") if content else None
+        info = parse_json(text) if text else None
+        if info and "version" in info and "knowledgeFile" in info \
+                and "transports" in info and "tools" in info:
+            ok(f"version={info.get('version')}, "
+               f"tools={len(info.get('tools', []))}, "
+               f"resources={len(info.get('resources', []))}, "
+               f"prompts={len(info.get('prompts', []))}")
+            p += 1
+        else:
+            fail(f"missing required keys in serverInfo: {text!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(16, "tools/call probeOrd with a known-valid ord (station root)")
+    status, _, body = client.tools_call("probeOrd",
+                                         {"ord": "station:|slot:/"},
+                                         request_id=16)
+    if status == 200:
+        j = parse_json(body)
+        content = j.get("result", {}).get("content", []) if j else []
+        text = content[0].get("text") if content else None
+        info = parse_json(text) if text else None
+        if info and info.get("exists") is True:
+            ok(f"station root resolved: type={info.get('type')}, "
+               f"slotCount={info.get('slotCount')}")
+            p += 1
+        else:
+            fail(f"expected exists=true for station root: {text!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(17, "tools/call probeOrd with garbage ord — expect {exists: false}, NOT error")
+    status, _, body = client.tools_call("probeOrd",
+                                         {"ord": "station:|slot:/__no_such_thing__"},
+                                         request_id=17)
+    if status == 200:
+        j = parse_json(body)
+        content = j.get("result", {}).get("content", []) if j else []
+        is_error = j.get("result", {}).get("isError", False)
+        text = content[0].get("text") if content else None
+        info = parse_json(text) if text else None
+        # garbage should yield exists=false, isError=false at MCP level
+        if info and info.get("exists") is False and not is_error:
+            ok(f"garbage ord correctly returned exists=false")
+            p += 1
+        else:
+            fail(f"expected exists=false isError=false; got isError={is_error}, info={info!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(18, "tools/call checkKnowledgeIntegrity (verify response shape)")
+    status, _, body = client.tools_call("checkKnowledgeIntegrity", {},
+                                         request_id=18)
+    if status == 200:
+        j = parse_json(body)
+        content = j.get("result", {}).get("content", []) if j else []
+        text = content[0].get("text") if content else None
+        info = parse_json(text) if text else None
+        if info and "totalRefs" in info and "validRefs" in info \
+                and "brokenRefs" in info:
+            ok(f"integrity: total={info.get('totalRefs')}, "
+               f"valid={info.get('validRefs')}, "
+               f"broken={info.get('brokenCount', len(info.get('brokenRefs', [])))}")
+            p += 1
+        else:
+            fail(f"missing required keys: {text!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(19, "GET /niagaramcp/health (no auth) — expect 200 + JSON")
+    health_url = f"{base.rstrip('/')}/health"
+    # Send WITHOUT Authorization header
+    req = urllib.request.Request(health_url, method="GET")
+    ctx = ssl._create_unverified_context() if insecure else None
+    try:
+        resp = urllib.request.urlopen(req, timeout=10, context=ctx)
+        body = resp.read().decode("utf-8", errors="replace")
+        status = resp.status
+    except urllib.error.HTTPError as he:
+        status = he.code
+        body = he.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        fail(f"GET /health failed: {e}")
+        return p + 0, f + 1
+    if status in (200, 503):
+        j = parse_json(body)
+        if j and "status" in j and "version" in j:
+            ok(f"HTTP {status}, status={j.get('status')}, "
+               f"version={j.get('version')}, "
+               f"healthyServices={j.get('healthyServices')}")
+            p += 1
+        else:
+            fail(f"missing status/version in body: {body[:200]!r}")
+            f += 1
+    else:
+        fail(f"unexpected HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    client.delete()
+    return p, f
+
+
 # ─── main ─────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
@@ -421,14 +555,17 @@ def main():
     ap.add_argument("--skip-sse", action="store_true")
     ap.add_argument("--skip-v030", action="store_true",
                     help="skip v0.3.0 tests (resources, prompts, knowledge)")
+    ap.add_argument("--skip-v031", action="store_true",
+                    help="skip v0.3.1 tests (diagnostics + /health)")
     args = ap.parse_args()
 
     base = f"{args.scheme}://{args.host}:{args.port}/{args.module}"
-    print(f"{BOLD}niagaramcp smoke test (v0.2.0 + v0.3.0){RESET}")
+    print(f"{BOLD}niagaramcp smoke test (v0.2.0 + v0.3.0 + v0.3.1){RESET}")
     print(f"  base URL: {base}")
     print(f"  insecure: {args.insecure}")
     print(f"  skip SSE: {args.skip_sse}")
     print(f"  skip v0.3.0: {args.skip_v030}")
+    print(f"  skip v0.3.1: {args.skip_v031}")
 
     client = StreamableClient(base, args.token, insecure=args.insecure)
 
@@ -443,8 +580,12 @@ def main():
     if not args.skip_v030:
         p_v3, f_v3 = run_v030_tests(client)
 
-    total_p = p_s + p_sse + p_v3
-    total_f = f_s + f_sse + f_v3
+    p_v31, f_v31 = (0, 0)
+    if not args.skip_v031:
+        p_v31, f_v31 = run_v031_tests(client, base, insecure=args.insecure)
+
+    total_p = p_s + p_sse + p_v3 + p_v31
+    total_f = f_s + f_sse + f_v3 + f_v31
     print(f"\n{BOLD}Result:{RESET} "
           f"{GREEN}{total_p} passed{RESET}, "
           f"{RED if total_f else GREY}{total_f} failed{RESET}")
