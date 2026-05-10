@@ -1,39 +1,30 @@
 #!/usr/bin/env python3
 """
-niagaramcp v0.2.0 smoke test.
+niagaramcp smoke test — v0.2.0 + v0.3.0 coverage.
 
 Standalone script — stdlib only, no pip install required.
-Verifies Streamable HTTP transport AND backward compat with SSE
-against a live Niagara station running niagaramcp v0.2.0.
+Verifies:
+  - Streamable HTTP transport (initialize, tools/list, tools/call, DELETE)
+  - SSE backward compatibility (GET /sse + POST /messages)
+  - Auth (401 without Bearer, 404 for garbage session id)
+  - v0.3.0 capabilities: resources/list, resources/read,
+    prompts/list, tools/call getKnowledgeSummary
 
 Usage (PowerShell or any shell):
-    python niagaramcp_smoke.py --host=192.168.1.10 --port=4911 --token=YOUR_BEARER
+    py niagaramcp_smoke.py --host=192.168.1.10 --port=86 --scheme=http --token=YOUR_BEARER
 
 Optional:
     --module=niagaramcp  module URL prefix (default niagaramcp)
     --insecure           skip TLS cert verification (for self-signed dev cert)
     --skip-sse           skip backward compat SSE tests
-    --skip-idle          skip idle eviction test (requires short timeout config)
-
-Steps covered (from v0.2.0-implementation-notes.md):
-    1. initialize → captures Mcp-Session-Id, checks protocolVersion
-    2. tools/list → expects 5 tools
-    3. tools/call echo → round-trips message
-    4. DELETE /mcp → 204
-    5. POST after DELETE → 404
-    6. POST /mcp without auth → 401
-    7. POST /mcp with wrong session id → 404
-    8. SSE backward compat: GET /sse → endpoint event, POST /messages → 202 + reply
-    9. idle eviction (optional, requires mcpSessionIdleTimeoutSec=60 set)
+    --skip-v030          skip v0.3.0-specific tests (use for v0.2.0 stations)
 """
 import argparse
 import json
 import ssl
 import sys
-import time
 import urllib.error
 import urllib.request
-from io import BytesIO
 
 
 # ─── ANSI ─────────────────────────────────────────────────────────────────────
@@ -43,6 +34,8 @@ YELLOW = "\033[93m"
 GREY   = "\033[90m"
 BOLD   = "\033[1m"
 RESET  = "\033[0m"
+
+BASELINE_TOOLS = {"echo", "listChildren", "readPoint", "writePoint", "bqlQuery"}
 
 
 def ok(msg):   print(f"  {GREEN}✓{RESET} {msg}")
@@ -101,7 +94,7 @@ class StreamableClient:
         body = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
                 "params": {"protocolVersion": "2025-06-18",
                            "capabilities": {},
-                           "clientInfo": {"name": "smoke", "version": "0.1"}}}
+                           "clientInfo": {"name": "smoke", "version": "0.2"}}}
         return http_request(f"{self.base}/mcp", "POST",
                             self._hdrs(), body, insecure=self.insecure)
 
@@ -110,9 +103,25 @@ class StreamableClient:
         return http_request(f"{self.base}/mcp", "POST",
                             self._hdrs(), body, insecure=self.insecure)
 
-    def tools_call(self, name, args):
-        body = {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+    def tools_call(self, name, args, request_id=3):
+        body = {"jsonrpc": "2.0", "id": request_id, "method": "tools/call",
                 "params": {"name": name, "arguments": args}}
+        return http_request(f"{self.base}/mcp", "POST",
+                            self._hdrs(), body, insecure=self.insecure)
+
+    def resources_list(self):
+        body = {"jsonrpc": "2.0", "id": 10, "method": "resources/list"}
+        return http_request(f"{self.base}/mcp", "POST",
+                            self._hdrs(), body, insecure=self.insecure)
+
+    def resources_read(self, uri):
+        body = {"jsonrpc": "2.0", "id": 11, "method": "resources/read",
+                "params": {"uri": uri}}
+        return http_request(f"{self.base}/mcp", "POST",
+                            self._hdrs(), body, insecure=self.insecure)
+
+    def prompts_list(self):
+        body = {"jsonrpc": "2.0", "id": 13, "method": "prompts/list"}
         return http_request(f"{self.base}/mcp", "POST",
                             self._hdrs(), body, insecure=self.insecure)
 
@@ -123,15 +132,13 @@ class StreamableClient:
 
 # ─── SSE ──────────────────────────────────────────────────────────────────────
 def sse_open(base, token, insecure=False, timeout=10):
-    """Open SSE stream, read first 'event: endpoint' frame, return (sessionId, raw_response).
-    The raw response stays open implicitly; we close it via context cleanup."""
+    """Open SSE stream, read first 'event: endpoint' frame."""
     req = urllib.request.Request(f"{base.rstrip('/')}/sse", method="GET")
     req.add_header("Authorization", f"Bearer {token}")
     ctx = ssl._create_unverified_context() if insecure else None
     resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
     if resp.status != 200:
         return None, resp.status
-    # parse first event
     event_name, data_lines = None, []
     while True:
         line = resp.readline().decode("utf-8", errors="replace").rstrip("\r\n")
@@ -146,7 +153,6 @@ def sse_open(base, token, insecure=False, timeout=10):
         elif line.startswith("data:"):
             data_lines.append(line[5:].strip())
     data = "\n".join(data_lines)
-    # data is like "/niagaramcp/messages?sessionId=<UUID>"
     if "sessionId=" in data:
         return data.split("sessionId=")[1].split("&")[0], resp
     return None, resp
@@ -187,19 +193,20 @@ def run_streamable_tests(client):
     else:
         fail(f"HTTP {status}: {body[:200]!r}")
         f += 1
-        return p, f  # cannot continue without session
+        return p, f
 
-    step(2, "POST /mcp tools/list")
+    step(2, "POST /mcp tools/list (verify baseline tools present)")
     status, _, body = client.tools_list()
     if status == 200:
         j = parse_json(body)
         tools = j.get("result", {}).get("tools", []) if j else []
-        names = [t.get("name") for t in tools]
-        ok(f"HTTP 200, got {len(tools)} tools: {names}")
-        if len(tools) == 5:
+        names = {t.get("name") for t in tools}
+        missing = BASELINE_TOOLS - names
+        if not missing:
+            ok(f"all 5 baseline tools present (total {len(tools)} tools)")
             p += 1
         else:
-            fail(f"expected 5 tools, got {len(tools)}")
+            fail(f"baseline tools missing: {missing}")
             f += 1
     else:
         fail(f"HTTP {status}")
@@ -272,8 +279,7 @@ def run_streamable_tests(client):
 
 
 def run_sse_compat_test(base, token, insecure=False):
-    """Runs the v0.1.0 SSE+messages flow on the v0.2.0 jar.
-    Returns (passed, failed)."""
+    """Returns (passed, failed)."""
     p, f = 0, 0
 
     step(8, "SSE backward compat: GET /sse + POST /messages")
@@ -293,7 +299,7 @@ def run_sse_compat_test(base, token, insecure=False):
     body = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
             "params": {"protocolVersion": "2024-11-05",
                        "capabilities": {},
-                       "clientInfo": {"name": "smoke-sse", "version": "0.1"}}}
+                       "clientInfo": {"name": "smoke-sse", "version": "0.2"}}}
     status, _, _ = sse_messages_post(base, token, sid, body, insecure=insecure)
     if status == 202:
         ok(f"POST /messages?sessionId=... → HTTP 202")
@@ -302,7 +308,6 @@ def run_sse_compat_test(base, token, insecure=False):
         fail(f"POST /messages expected 202, got {status}")
         f += 1
 
-    # we do not block to read the SSE response here — the 202 confirms enqueue worked.
     info("(skip reading SSE response body — 202 confirms enqueue path)")
     try:
         resp.close()
@@ -312,34 +317,134 @@ def run_sse_compat_test(base, token, insecure=False):
     return p, f
 
 
+def run_v030_tests(client):
+    """v0.3.0-specific capabilities."""
+    p, f = 0, 0
+
+    step(9, "Fresh initialize for v0.3.0 tests")
+    client.session_id = None
+    status, headers, body = client.initialize()
+    if status == 200:
+        sid = headers.get("Mcp-Session-Id") or headers.get("mcp-session-id")
+        client.session_id = sid
+        ok(f"new session: {sid[:12]}...")
+        p += 1
+    else:
+        fail(f"HTTP {status}")
+        f += 1
+        return p, f
+
+    step(10, "POST /mcp resources/list (expect non-empty array)")
+    status, _, body = client.resources_list()
+    if status == 200:
+        j = parse_json(body)
+        resources = j.get("result", {}).get("resources", []) if j else []
+        if resources:
+            uris = [r.get("uri") for r in resources]
+            ok(f"got {len(resources)} resources: {uris}")
+            p += 1
+        else:
+            fail(f"resources array empty or missing: {body[:200]!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(11, "POST /mcp resources/read niagara://overview")
+    status, _, body = client.resources_read("niagara://overview")
+    if status == 200:
+        j = parse_json(body)
+        contents = j.get("result", {}).get("contents", []) if j else []
+        if contents and (contents[0].get("text") or contents[0].get("blob")):
+            text = contents[0].get("text", "")
+            ok(f"overview content received ({len(text)} chars)")
+            p += 1
+        else:
+            fail(f"contents missing or empty: {body[:200]!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(12, "POST /mcp prompts/list (expect 7 prompts)")
+    status, _, body = client.prompts_list()
+    if status == 200:
+        j = parse_json(body)
+        prompts = j.get("result", {}).get("prompts", []) if j else []
+        names = [p_.get("name") for p_ in prompts]
+        if len(prompts) >= 7:
+            ok(f"got {len(prompts)} prompts: {names}")
+            p += 1
+        elif len(prompts) > 0:
+            fail(f"expected ≥7 prompts, got {len(prompts)}: {names}")
+            f += 1
+        else:
+            fail(f"prompts array empty: {body[:200]!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    step(13, "POST /mcp tools/call getKnowledgeSummary")
+    status, _, body = client.tools_call("getKnowledgeSummary", {},
+                                         request_id=14)
+    if status == 200:
+        j = parse_json(body)
+        content = j.get("result", {}).get("content", []) if j else []
+        text = content[0].get("text") if content else None
+        if text:
+            ok(f"summary returned ({len(text)} chars): {text[:120]!r}")
+            p += 1
+        else:
+            fail(f"empty content: {body[:200]!r}")
+            f += 1
+    else:
+        fail(f"HTTP {status}: {body[:200]!r}")
+        f += 1
+
+    client.delete()
+    return p, f
+
+
 # ─── main ─────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", required=True)
     ap.add_argument("--port", type=int, default=4911)
-    ap.add_argument("--token", required=True, help="Bearer apiToken from BMcpPlatformService")
-    ap.add_argument("--module", default="niagaramcp", help="module URL prefix")
+    ap.add_argument("--token", required=True,
+                    help="Bearer apiToken from BMcpPlatformService")
+    ap.add_argument("--module", default="niagaramcp",
+                    help="module URL prefix")
     ap.add_argument("--scheme", default="https", choices=["http", "https"])
     ap.add_argument("--insecure", action="store_true",
-                    help="skip TLS cert verification (self-signed dev cert)")
+                    help="skip TLS cert verification")
     ap.add_argument("--skip-sse", action="store_true")
+    ap.add_argument("--skip-v030", action="store_true",
+                    help="skip v0.3.0 tests (resources, prompts, knowledge)")
     args = ap.parse_args()
 
     base = f"{args.scheme}://{args.host}:{args.port}/{args.module}"
-    print(f"{BOLD}niagaramcp v0.2.0 smoke test{RESET}")
+    print(f"{BOLD}niagaramcp smoke test (v0.2.0 + v0.3.0){RESET}")
     print(f"  base URL: {base}")
     print(f"  insecure: {args.insecure}")
     print(f"  skip SSE: {args.skip_sse}")
+    print(f"  skip v0.3.0: {args.skip_v030}")
 
     client = StreamableClient(base, args.token, insecure=args.insecure)
+
     p_s, f_s = run_streamable_tests(client)
 
     p_sse, f_sse = (0, 0)
     if not args.skip_sse:
-        p_sse, f_sse = run_sse_compat_test(base, args.token, insecure=args.insecure)
+        p_sse, f_sse = run_sse_compat_test(base, args.token,
+                                            insecure=args.insecure)
 
-    total_p = p_s + p_sse
-    total_f = f_s + f_sse
+    p_v3, f_v3 = (0, 0)
+    if not args.skip_v030:
+        p_v3, f_v3 = run_v030_tests(client)
+
+    total_p = p_s + p_sse + p_v3
+    total_f = f_s + f_sse + f_v3
     print(f"\n{BOLD}Result:{RESET} "
           f"{GREEN}{total_p} passed{RESET}, "
           f"{RED if total_f else GREY}{total_f} failed{RESET}")
