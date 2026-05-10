@@ -1,7 +1,70 @@
-# Session notes: v0.2.0 → v0.4 release work
+# Session notes: v0.2.0 → v0.4.1 release work
 
-**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0
+**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1
 **Время:** несколько сессий, май 2026.
+
+---
+
+## v0.4.1 — UX polish before real-world tests (2026-05-10)
+
+**Branch:** `v0.4.1-ux-polish` (off `main` после v0.4 merge).
+**Commits:** 5 атомарных. **LOC:** +702 / −9 = **+693 net**.
+**Jar:** 216.6 KB → **220.4 KiB** (+4 %, target ≤220 KB на грани, hard
+ceiling ≤225 KB ✓).
+
+### Что добавлено
+
+- **4 read-only count properties** на `BMcpPlatformService`
+  (flags=3 → SUMMARY+READONLY): `toolCount` (36), `resourceCount`
+  (6), `promptCount` (7), `sessionCount` (live, refresh
+  через notification из McpSessions create/remove/closeAll — без
+  polling, без новых потоков). Видны на Workbench Property Sheet —
+  оператор видит runtime-стат при открытии сервиса.
+- **36-й tool `getFeatureDump`** (category `diagnostic`) — статический
+  feature-инвентарь сервера, два формата: `text` (банер для
+  операторов) / `json` (для AI-клиентов). Включает версию, tools по
+  категориям, resources split (static / templates), prompts,
+  transport-флаги, knowledge-стат, sessions, health и 9
+  impl-defined JSON-RPC error-кодов с расшифровкой.
+- Smoke client +2 шага (steps 23–24, getFeatureDump text + json),
+  всего **24** (брифу казалось 24 → 26, но baseline был 22).
+- `NIAGARAMCP_VERSION` bump 0.4.0 → 0.4.1.
+
+### Что не добавлено (исследование задокументировано)
+
+- **`BFilePath` для `knowledgeFilePath`** — `BFilePath` не существует
+  в baja 4.15.3.28; `FilePath` есть (но не BSimple); `BAbstractFile`
+  только для in-station file space; `BFacets` не имеет
+  `FILE_BROWSE` key. Workbench file-picker UX отложен до появления
+  `niagaramcp-wb` subproject. 19 LOC javadoc на property
+  объясняет почему.
+
+### Что отложено в v0.5+
+
+- Per-transport `sessionCount` split (SSE vs Streamable) — нужно
+  расширение McpSessions API.
+- `niagaramcp-wb` subproject: file-picker для `knowledgeFilePath`,
+  custom Property Sheet renderer для `sessionCount` (live counter),
+  PX-виджеты.
+
+### Branch state
+
+- `v0.4.1-ux-polish` — unmerged.
+- `main` — at v0.4 merge.
+- Stack теперь: main (v0.4 merged) → v0.4.1-ux-polish (5 commits,
+  unmerged).
+
+### Surprises
+
+- Выбрал **notification-pattern** для `sessionCount` вместо
+  `BService.tick()` (бриф рекомендовал tick). Notifications дают
+  exactness (без 1-сек лага), не требуют тик-handler-регистрации,
+  и общий принцип "no new threads" сохраняется.
+- Brief assumed 24 baseline smoke steps — реально было 22. Новый
+  total = 24, не 26. Зафиксировано в notes.
+- Auto-install copy task снова падает на station-locked jar (как в
+  v0.3.0/v0.3.1/v0.4) — разовая ручная замена при остановленной
+  станции.
 
 ---
 
@@ -52,6 +115,75 @@
 - v0.3.1 tag не существует (v0.3.1-diagnostics тоже unmerged).
 - Stack: main → v0.3.1-diagnostics (8 commits) → v0.4-operational
   (8 commits).
+
+---
+
+## v0.3.1 — Diagnostic capabilities + samples (2026-05-10)
+
+> Backfilled in v0.4.1 commit 5: эта секция была пропущена при
+> добавлении v0.4-секции в commit 8 предыдущей сессии.
+
+**Branch:** `v0.3.1-diagnostics` (off `main` at tag `v0.3.0`).
+**Commits:** 7 атомарных. **LOC:** +1 512 / −20 = **+1 492 net**.
+**Jar:** 236.4 KB → **243.4 KB** (+7 KB / +3 %).
+
+### Что добавлено
+
+- **4 диагностических tools** (28 → 32):
+  - `getServerInfo` — snapshot version/uptime/sessions/knowledge
+    file/transports/registered tools/resources/prompts.
+  - `probeOrd {ord}` — resolve ord, отдаёт exists/type/displayName/
+    parentOrd/slotCount + isControlPoint/isWritable/isAlarmSource +
+    hasHistoryExt + historyExtCount/historyExtIds. Garbage ords
+    дают `{exists:false}`, не error.
+  - `checkKnowledgeIntegrity` — пройти каждый ord в knowledge model,
+    репортить broken refs.
+  - `getServiceHealth` — alarm/history availability + knowledge file
+    readability/writability + sample-resource read-back.
+- **Unauthenticated `/health` endpoint** — единственное исключение
+  из Bearer-on-everything. Для k8s/Prometheus/watchdog. Отдаёт
+  `200 + {status:"ok", version, uptimeSeconds, knowledgeFileSize,
+  sessionCount, healthyServices}` в норме / `503 + status:"degraded"`
+  при проблемах. Не показывает station data, equipment, ords.
+- **3 новых operator-property**:
+  - `mcpProtocolVersion` (String) — override MCP protocol version в
+    initialize (default empty → "2025-06-18").
+  - `maxHistoryRecordsPerQuery` (int, default 10000) — cap для
+    `readHistory`.
+  - `disabledTools` (String, comma-separated) — оператор может
+    подавить tool'ы при старте. Restart-required.
+- **8 standardised JSON-RPC error codes** (-32001..-32008): session/
+  tool/resource/knowledge/schema/ord/history/alarm. Error responses
+  с `error.data` JSONObject (`{toolName: ...}`, `{uri: ...}` и т.д.).
+- **`samples/` папка** (вне jar): `mall-knowledge.yaml` (синтетический
+  shopping mall fixture, ~14 equipment / 12 spaces) +
+  `samples/README.md`. Операторы импортят через `importKnowledge`
+  чтобы тестить queries без реального walkthrough.
+- Smoke client +6 шагов (14–19), всего 19.
+
+### Что обнаружилось при разработке
+
+- `BHistoryService.getHistoryDb()` не существует — правильно
+  `getDatabase()`.
+- `HistorySpaceConnection.timeQuery` возвращает `BITable`, не
+  `HistoryCursor`.
+- `BAlarmRecord.getSource()` возвращает `BOrdList` напрямую, не
+  `BAlarmSource`.
+
+Все 3 находки исправлены в тех же commit'ах + задокументированы.
+
+### Что отложено в v0.4
+
+- Tool category tags в tools/list.
+- Combined diagnostic snapshot (получит имя `getDiagnosticDump` в
+  v0.4).
+- Transport toggles (sseEnabled/streamableEnabled).
+
+### Branch state
+
+- `v0.3.1-diagnostics` — unmerged (left for human review per брифу).
+- `main` — at v0.3.0 merge + recon.
+- v0.3.0 tag exists, v0.3.1 tag не создан.
 
 ---
 
