@@ -5,7 +5,25 @@ All notable changes to **niagaramcp** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] — v0.5 user-context work in progress
+
+User-Context gateway + per-user audit, foundation for write-tools that
+mutate the station component tree under the calling user's Niagara
+permissions instead of the service identity. Branch
+`v0.5-user-context`, accumulating commits.
+
+### Added (so far)
+
+- 2 new JSON-RPC error codes:
+  - **`-32010` ERR_PERMISSION_DENIED** — wraps
+    `javax.baja.security.PermissionException`. `error.data` carries
+    `{user, ord, operation}` captured at the call-site (the underlying
+    PermissionException only exposes a string message, no rich payload).
+  - **`-32011` ERR_USER_NOT_FOUND** — Bearer presented but does not
+    resolve to any `BUser` via the `mcp:tokenHash` tag walk. Distinct
+    from HTTP 401: 401 fires when no Bearer at all, -32011 fires when
+    a Bearer authenticated against `apiToken` is used to call a tool
+    whose `requiresUserContext()` is true.
 
 ### Planned
 

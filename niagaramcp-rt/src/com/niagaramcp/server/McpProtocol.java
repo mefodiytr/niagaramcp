@@ -61,6 +61,25 @@ public final class McpProtocol {
   /** Transport disabled by operator (sseEnabled / streamableEnabled property false). */
   public static final int ERR_TRANSPORT_DISABLED    = -32009;
 
+  // ----- niagaramcp-implementation-defined codes (v0.5) ----------
+  /**
+   * User-Context operation refused by Niagara permissions. Wraps
+   * {@link javax.baja.security.PermissionException}. {@code error.data}
+   * carries {@code {user, ord, operation}} captured at the call-site
+   * because the underlying PermissionException only exposes a String
+   * message.
+   */
+  public static final int ERR_PERMISSION_DENIED     = -32010;
+  /**
+   * Bearer token presented does not resolve to any {@code BUser} via
+   * the {@code mcp:tokenHash} tag walk over {@code BUserService}. Used
+   * for tools whose {@code requiresUserContext()} is true. Distinct from
+   * 401 (which fires when no Bearer at all): -32011 fires inside
+   * dispatch when auth succeeded against {@code apiToken} but the
+   * specific tool needs a user identity instead of service identity.
+   */
+  public static final int ERR_USER_NOT_FOUND        = -32011;
+
   public static JSONObject handle(JSONObject request, ToolRegistry registry, Session session) {
     Object id = request.has("id") ? request.get("id") : null;
     boolean isNotification = !request.has("id");
