@@ -1,7 +1,129 @@
-# Session notes: v0.2.0 → v0.4.1 release work
+# Session notes: v0.2.0 → v0.5 release work
 
-**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1
+**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1 → v0.5
 **Время:** несколько сессий, май 2026.
+
+---
+
+## v0.5 — User-Context gateway + per-user audit (2026-05-10)
+
+**Branch:** `v0.5-user-context` (off `main` после v0.4.1 merge).
+**Commits:** 10 атомарных. **LOC:** +1 867 / −19 = **+1 848 net**.
+**Jar:** 220.4 KiB → ≈230–235 KiB (estimated, +20 class files; точное
+число — после следующего clean assemble).
+
+### Что добавлено
+
+- **User-Context auth pipeline**: Bearer → `BUser` через walk
+  `BUserService.getUsers()` + constant-time compare против
+  `mcp:tokenHash` тэга. Legacy `apiToken` остаётся read-only
+  service identity для мониторинга / read-tools; write-tools под
+  `requiresUserContext=true` отбивают apiToken через
+  `-32011 ERR_USER_NOT_FOUND` ДО dispatch'а.
+- **`UserContextGateway.run(BUser, OpDesc, args, sessionId,
+  ContextAwareWork<T>)`** — единственная entry-point для write-tools.
+  Строит `BasicContext(user)`, оборачивает `PermissionException` в
+  `-32010` с rich `data{user, ord, operation, tool, detail}`,
+  emit'ит один audit-record на вызов.
+- **Audit pipeline**: JSONL primary (всегда on, full record:
+  `{ts, user, sessionId, tool, ord, action, args, resultOk,
+  durationMs, errorCode, errorMessage}`), best-effort secondary
+  через `BAuditHistoryServiceAdapter` — reflection-only на
+  `com.tridium.history.audit.BAuditHistoryService`, никакого
+  compile-time dep на `history-rt` (lightweight JACE стартует без
+  `NoClassDefFoundError`). Redactor с regex blacklist
+  `(password|secret|token|apikey|passcode|pwd|credential)` +
+  256-char string truncation.
+- **Tool interface**: 2 default-метода — `requiresUserContext()`
+  (default `false`) и `annotations()` (default
+  `ToolAnnotations.READ_ONLY`). Per MCP 2025-06-18 §6.1, каждая
+  строка `tools/list` теперь несёт `annotations:{readOnlyHint,
+  destructiveHint, idempotentHint, openWorldHint}` плюс
+  niagaramcp-extension `requiresUserContext`. Существующие 36 tools
+  наследуют дефолты — zero touch.
+- **Auto-promote** JSON-string tool result в
+  `result.structuredContent` (per spec §5.4) — purely additive,
+  legacy clients продолжают читать `content[0].text`. Бэкфилл,
+  обещанный в Q11, случился автоматически для всего каталога.
+- **`createComponent`** (category `write`, annotations `MUTATION`,
+  requiresUserContext) — reference write-tool: добавляет fresh
+  `BComponent` указанного типа как child существующего parent'а
+  под calling user permissions. Args:
+  `{parentOrd, type, name, nameStrategy?:"fail"|"suffix"}`.
+- **`setupTestUser`** (test-only, gated by
+  `enableTestSetup` property; default false) — для smoke step 25:
+  биндит `mcp:tokenHash` тэг к pre-created BUser'у через apiToken,
+  чтобы smoke мог подключиться под user-Bearer без bog-fragment'а в
+  pre-deployment runbook.
+- **Smoke step 25** — e2e mutation: smoke генерит фреш-токен,
+  setupTestUser биндит, reconnect под user-Bearer, createComponent,
+  проверяет `structuredContent.ord`. Покрывает реальный pipeline
+  (BearerResolver → CallContext → Gateway → BasicContext(user) →
+  permission-checked `parent.add` → audit).
+- **2 новых JSON-RPC error code**: `-32010 ERR_PERMISSION_DENIED`,
+  `-32011 ERR_USER_NOT_FOUND`.
+- **2 новых property**: `tokenSalt` (READONLY, lazy-generated),
+  `enableTestSetup` (bool, default false).
+
+### Что обнаружилось при разработке
+
+- **`Sys.makeContext` / `BUserService.runAs` / `BLocalSession.makeContext`
+  не существуют.** В Niagara нет thread-local context; `Context`
+  передаётся explicit в каждый mutating-вызов. Gateway-сигнатура
+  переразвернулась с `run(BUser, ThrowingSupplier<T>)` на
+  `run(BUser, OpDesc, args, sessionId, ContextAwareWork<T>)` — work
+  получает cx и threads его в каждый `parent.add(name, val, cx)`.
+- **`BUser implements Context, Principal`** — BUser сам по себе
+  Context. `new BasicContext(user)` нужен только для default
+  facets, можно и без обёртки.
+- **`BAuditService` отсутствует в публичном API.** Есть только
+  interfaces `Auditor.audit(AuditEvent)` + `SecurityAuditor`.
+  Concrete service `com.tridium.history.audit.BAuditHistoryService`
+  — non-public, не на каждой станции. Перевернуло Q5 design:
+  JSONL primary, BAuditHistoryService через reflection-adapter.
+- **`PermissionException` без rich payload** — только String message.
+  Wrapper собирает `data{user, ord, operation, tool}` из call-site
+  `OpDesc` (поэтому OpDesc — отдельный параметр, не derivable из
+  exception'а).
+- **TagDictionary auto-bootstrap отскоплен**. `BTagDictionary`
+  programmatic-construction требует populated `BTagInfoList` — это
+  отдельный ~100-LOC feature. Commit 4 ship'нул schema-constants +
+  reflection-check «registered already?»; programmatic register —
+  v0.5.x. Tag write/read работает без registration; Workbench
+  TagBrowser entry — опционально.
+
+### Что отложено в v0.5.x / v0.6
+
+- Programmatic BTagDictionary auto-construction.
+- JSONL audit log size-rotation.
+- Operator-configurable `auditRedactPattern` property.
+- Workbench action `generateUserToken(BString)` + MCP tool
+  `rotateMcpToken`.
+- `writePoint` retrofit к `requiresUserContext=true`.
+- M1 write-tools хвост (по шаблону `createComponent`):
+  `removeComponent`, `setSlot`, `invokeAction`, `addExtension`,
+  `linkSlots`/`unlinkSlots`, `commitStation` — единый batch.
+
+### Branch state
+
+- `v0.5-user-context` — unmerged (10 commits).
+- `main` — at v0.4.1 merge.
+- Stack: main (v0.4.1 merged) → v0.5-user-context (10 commits,
+  unmerged).
+
+### Surprises
+
+- Plan был на 9 commits; +1 на ходу — `SetupTestUserTool`
+  extracted из commit 9 в commit 10, чтобы production tool
+  (createComponent) не смешивался в одном review-юните с
+  test-only setupTestUser + enableTestSetup property.
+- Auto-promote JSON-string результата в `structuredContent` —
+  один-к-одному закрыло Q11 backfill «бесплатно» для всех 36
+  существующих tools.
+- Brief estimate "~100 LOC for gateway" не учитывал supporting
+  packages (auth + audit + Tool interface + smoke). Финал ~1 800
+  LOC. Каждая часть осталась "small + focused"; собранный объём —
+  цена за full pipeline в одном release'е.
 
 ---
 

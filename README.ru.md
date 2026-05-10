@@ -335,6 +335,111 @@ JSON-ответ.
 
 ---
 
+## User-Context gateway и per-user audit (v0.5)
+
+Foundation-релиз для write-tools, мутирующих station-component-tree
+под Niagara-permissions вызывающего пользователя, а не под service
+identity. Без breaking changes — все 36 существующих tools работают
+ровно как и раньше; новый pipeline активен только для tool'ов с
+`requiresUserContext=true` (в v0.5 — только `createComponent`,
+остальной M1 — v0.5.x).
+
+### Как работает user identity
+
+- Оператор pre-creates `BUser` через Workbench (UserService) и
+  выдаёт ему Niagara-permissions, нужные tool'у.
+- MCP-токен пользователя биндится к BUser через тэг
+  `mcp:tokenHash` (salted SHA-256 против per-service `tokenSalt`,
+  лениво генерится при первом запуске).
+- На каждый запрос: `McpServlet` аутентифицирует Bearer ЛИБО
+  против legacy `apiToken` (read-only service identity для
+  monitoring), ЛИБО через `BearerResolver`, walking
+  `BUserService.getUsers()` с constant-time hash-compare.
+- Walk идёт по всем юзерам unconditionally — без early-exit на
+  match — чтобы общее время не лекало enrollment list.
+- Резолвнутый BUser течёт через `CallContext` в тело tool'а,
+  который кладёт его в `UserContextGateway.run(...)`. Gateway
+  строит `BasicContext(user)`, исполняет work-лямбду, заворачивает
+  `PermissionException` в `-32010` с rich
+  `data{user, ord, operation, tool, detail}`, emit'ит один
+  audit-record на вызов.
+
+### Per-user audit
+
+- **JSONL primary**: каждый gateway-вызов пишет одну JSON-строку в
+  `<userHome>/niagaramcp/niagaramcp.audit.log`:
+  `{ts, user, sessionId, tool, ord, action, args, resultOk,
+  durationMs, errorCode, errorMessage}`. Args проходят через
+  redactor (default key blacklist:
+  `password|secret|token|apikey|passcode|pwd|credential`),
+  длинные string-значения truncate'ятся до 256 chars с `…+N`
+  суффиксом.
+- **BAuditHistoryService secondary**: best-effort,
+  **reflection-only**. Lookup на service-старте; method handle
+  cached. Никакого compile-time dep на `history-rt` —
+  lightweight JACE без этого модуля стартует чисто. Когда сервис
+  есть, наши записи видны в Workbench AuditView с 6-field
+  маппингом (operation = action, target = ord, slotName = tool,
+  value = "ok"|"FAIL: …", userName = user).
+
+### MCP tool annotations
+
+Per MCP 2025-06-18 §6.1, каждая строка `tools/list` теперь несёт
+`annotations: {readOnlyHint, destructiveHint, idempotentHint,
+openWorldHint}` плюс niagaramcp-extension `requiresUserContext`.
+MCP-aware клиенты (Claude Desktop, Cursor, MCP Inspector) гейтят
+user-visible warnings на этих полях — например запрашивают
+explicit confirmation перед `destructiveHint=true`. Существующие
+36 tools наследуют `READ_ONLY`-дефолты — zero touch.
+
+### `createComponent` tool (37-й)
+
+Reference write-tool для M1-набора. Добавляет новый `BComponent`
+указанного типа как child существующего parent'а под calling
+user permissions.
+
+```
+{
+  "parentOrd":    "station:|slot:/Drivers",
+  "type":         "baja:Folder",
+  "name":         "BasementHVAC",
+  "nameStrategy": "fail" | "suffix"     // опционально, default "fail"
+}
+```
+
+Возвращает (в `content[0].text` И в `structuredContent`):
+`{ord, displayName, requestedName, resolvedName}`.
+
+Errors: -32602 (missing arg / collision под "fail"), -32006
+(parentOrd не резолвится), -32005 (type не грузится), -32010
+(permission denied), -32011 (bearer = service identity, не BUser).
+
+### Auto-promote `structuredContent`
+
+McpProtocol теперь auto-promote'ит JSON-shape результаты tool'ов
+в MCP `result.structuredContent` per spec §5.4. Чисто добавление:
+legacy-клиенты продолжают читать `content[0].text`, modern —
+typed structuredContent. Затрагивает весь каталог из 36 tools без
+per-tool изменений.
+
+### `setupTestUser` tool (38-й, test-only)
+
+Gated через `BMcpPlatformService.enableTestSetup` (default
+`false`). Когда включён — позволяет smoke-клиенту биндить
+свежесгенерённый Bearer к pre-created BUser'у (`mcp:tokenHash`
+тэг), чтобы v0.5 e2e smoke-step (createComponent под
+user-Bearer) работал без bog-fragment'а в pre-deployment.
+Production-деплой держит флаг выключенным.
+
+### 2 новых error code
+
+| Код | Symbol | Когда срабатывает |
+|---|---|---|
+| `-32010` | `ERR_PERMISSION_DENIED` | Niagara `PermissionException` из любого мутирующего вызова внутри gateway-обёрнутого tool'а. `data{user, ord, operation, tool, detail}`. |
+| `-32011` | `ERR_USER_NOT_FOUND` | Tool с `requiresUserContext=true` вызван с Bearer, резолвящимся в apiToken (service identity), а не в BUser. `data{tool, requiresUserContext: true}`. |
+
+---
+
 ## Workbench polish и feature dump (v0.4.1)
 
 UX-полировка перед реальным walkthrough-тестированием. Без
