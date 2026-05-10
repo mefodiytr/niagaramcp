@@ -50,6 +50,7 @@ import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
 import com.niagaramcp.server.tools.CheckKnowledgeIntegrityTool;
 import com.niagaramcp.server.tools.CreateComponentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTool;
+import com.niagaramcp.server.tools.SetupTestUserTool;
 import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
 import com.niagaramcp.server.tools.CreateSpaceTool;
 import com.niagaramcp.server.tools.CreateStandalonePointTool;
@@ -115,7 +116,11 @@ import com.niagaramcp.server.tools.WritePointTool;
   // (SUMMARY+READONLY) — visible to operators for diagnostic purposes
   // but never edited by hand (changing the salt invalidates ALL
   // existing user tokens at once, requiring a full rotation).
-  @NiagaraProperty(name = "tokenSalt",                type = "String",  defaultValue = "\"\"", flags = 3)
+  @NiagaraProperty(name = "tokenSalt",                type = "String",  defaultValue = "\"\"", flags = 3),
+  // v0.5: gate for the test-only `setupTestUser` tool. Default false.
+  // When true, smoke client can bind a tokenHash tag to a pre-created
+  // BUser via setupTestUser; flip to false in production.
+  @NiagaraProperty(name = "enableTestSetup",          type = "boolean", defaultValue = "false")
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -218,6 +223,11 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static final Property tokenSalt = newProperty(3, "", null);
   public String getTokenSalt() { return getString(tokenSalt); }
   public void setTokenSalt(String v) { setString(tokenSalt, v, null); }
+
+  // v0.5 — flag for test-only setupTestUser tool. Default false.
+  public static final Property enableTestSetup = newProperty(0, false, null);
+  public boolean getEnableTestSetup() { return getBoolean(enableTestSetup); }
+  public void setEnableTestSetup(boolean v) { setBoolean(enableTestSetup, v, null); }
 
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
@@ -340,6 +350,8 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new GetFeatureDumpTool());
     // v0.5: first user-Context write tool (reference for the M1 set)
     r.register((Tool) new CreateComponentTool());
+    // v0.5: test-only helper for smoke step 25 (gated by enableTestSetup)
+    r.register((Tool) new SetupTestUserTool());
     REGISTRY = r;
 
     // v0.3 — Resources
@@ -472,6 +484,12 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static String tokenSalt() {
     BMcpPlatformService s = INSTANCE;
     return (s == null) ? "" : s.getTokenSalt();
+  }
+
+  /** @return whether the test-only {@code setupTestUser} tool is enabled. */
+  public static boolean enableTestSetup() {
+    BMcpPlatformService s = INSTANCE;
+    return (s != null) && s.getEnableTestSetup();
   }
 
   public static int sseHeartbeatSec() {

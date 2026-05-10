@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-niagaramcp smoke test — v0.2.0 + v0.3.0 + v0.3.1 + v0.4 + v0.4.1 coverage.
+niagaramcp smoke test — v0.2.0 + v0.3.0 + v0.3.1 + v0.4 + v0.4.1 + v0.5 coverage.
 
 Standalone script — stdlib only, no pip install required.
 Verifies:
@@ -24,6 +24,15 @@ Optional:
     --skip-v031          skip v0.3.1 diagnostics tests
     --skip-v04           skip v0.4 tests (categories, diagnostic dump)
     --skip-v041          skip v0.4.1 tests (getFeatureDump)
+    --skip-v05           skip v0.5 e2e mutation (createComponent under user-Bearer)
+    --smoke-user=NAME    pre-created BUser (default mcpSmokeUser) for v0.5 step 25
+    --smoke-parent=ORD   parent ord for the test Folder (default station:|slot:/Drivers)
+
+v0.5 PRE-FLIGHT (one-time, operator side):
+  1. In Workbench: create BUser <smoke-user> under UserService.
+  2. Grant that user add-permission on <smoke-parent>.
+  3. On BMcpPlatformService: set enableTestSetup=true (revert after smoke).
+  4. Restart station.
 """
 import argparse
 import json
@@ -669,6 +678,94 @@ def run_v041_tests(client):
     return p, f
 
 
+def run_v05_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure=False):
+    """v0.5: e2e mutation under user-Context.
+
+    Pre-flight (operator-side, one-time):
+      1. Create BUser ``smoke_user`` via Workbench (UserService).
+      2. Grant that BUser add-permission on ``smoke_parent_ord``.
+      3. Set BMcpPlatformService.enableTestSetup=true (flip back after).
+      4. Restart station.
+
+    Step 25 sequence:
+      1. Generate a fresh random bearer token for the smoke user.
+      2. Under apiToken: tools/call setupTestUser → binds mcp:tokenHash
+         tag on the BUser to hash(token, salt).
+      3. Reconnect a NEW client under the new user-Bearer.
+      4. Under user-Bearer: tools/call createComponent on
+         ``smoke_parent_ord`` with a unique Folder name. Verifies the
+         full pipeline (BearerResolver → CallContext → Gateway →
+         BasicContext(user) → permission-checked add → audit).
+    """
+    import secrets
+    import time
+    p, f = 0, 0
+    print(f"\n{BOLD}=== v0.5 tests (user-Context mutation){RESET}")
+
+    # --- Step 25 ---
+    step(25, f"createComponent under user-Context (Folder under {smoke_parent_ord})")
+
+    # 1. fresh token
+    smoke_token = secrets.token_urlsafe(32)
+
+    # 2. setupTestUser under apiToken
+    status, _, body = client_apitoken.initialize()
+    if status != 200:
+        fail(f"v0.5 init failed (HTTP {status})")
+        return p, f + 1
+
+    status, _, body = client_apitoken.tools_call(
+        "setupTestUser",
+        {"username": smoke_user, "token": smoke_token},
+        request_id=2501)
+    if status != 200:
+        fail(f"setupTestUser HTTP {status}: {body[:200]!r}")
+        return p, f + 1
+    j = parse_json(body)
+    err = (j or {}).get("error") if j else None
+    if err:
+        fail(f"setupTestUser RPC error {err.get('code')}: {err.get('message')}; "
+             f"hint = {err.get('data', {}).get('hint', 'n/a')}")
+        return p, f + 1
+    info(f"  bound mcp:tokenHash to {smoke_user}")
+    client_apitoken.delete()
+
+    # 3. reconnect under user-Bearer
+    user_client = StreamableClient(base, smoke_token, insecure=insecure)
+    status, _, body = user_client.initialize()
+    if status != 200:
+        fail(f"user-Bearer init failed (HTTP {status}): {body[:200]!r}")
+        return p, f + 1
+
+    # 4. createComponent
+    folder_name = f"mcpSmoke_{int(time.time())}"
+    status, _, body = user_client.tools_call(
+        "createComponent",
+        {"parentOrd": smoke_parent_ord, "type": "baja:Folder", "name": folder_name},
+        request_id=2502)
+    if status != 200:
+        fail(f"createComponent HTTP {status}: {body[:200]!r}")
+        user_client.delete()
+        return p, f + 1
+    j = parse_json(body) or {}
+    if "error" in j:
+        e = j["error"]
+        fail(f"createComponent RPC error {e.get('code')}: {e.get('message')}; "
+             f"data = {e.get('data')}")
+        user_client.delete()
+        return p, f + 1
+    structured = j.get("result", {}).get("structuredContent")
+    if not structured or "ord" not in structured:
+        fail(f"createComponent result missing structuredContent.ord; got {j.get('result')}")
+        user_client.delete()
+        return p, f + 1
+    ok(f"created {structured.get('ord')} (resolvedName={structured.get('resolvedName')})")
+    p += 1
+
+    user_client.delete()
+    return p, f
+
+
 # ─── main ─────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser()
@@ -690,6 +787,13 @@ def main():
                     help="skip v0.4 tests (categories, dump, transports list)")
     ap.add_argument("--skip-v041", action="store_true",
                     help="skip v0.4.1 tests (getFeatureDump text + json)")
+    ap.add_argument("--skip-v05", action="store_true",
+                    help="skip v0.5 e2e mutation test (default ON unless "
+                         "operator pre-flight is done — see --smoke-user)")
+    ap.add_argument("--smoke-user", default="mcpSmokeUser",
+                    help="BUser pre-created by operator with add-permission on --smoke-parent (v0.5 step 25)")
+    ap.add_argument("--smoke-parent", default="station:|slot:/Drivers",
+                    help="Parent ord under which createComponent will create a Folder (v0.5 step 25)")
     args = ap.parse_args()
 
     base = f"{args.scheme}://{args.host}:{args.port}/{args.module}"
@@ -701,6 +805,10 @@ def main():
     print(f"  skip v0.3.1: {args.skip_v031}")
     print(f"  skip v0.4:   {args.skip_v04}")
     print(f"  skip v0.4.1: {args.skip_v041}")
+    print(f"  skip v0.5:   {args.skip_v05}")
+    if not args.skip_v05:
+        print(f"    smoke user:    {args.smoke_user}")
+        print(f"    smoke parent:  {args.smoke_parent}")
 
     client = StreamableClient(base, args.token, insecure=args.insecure)
 
@@ -727,8 +835,15 @@ def main():
     if not args.skip_v041:
         p_v41, f_v41 = run_v041_tests(client)
 
-    total_p = p_s + p_sse + p_v3 + p_v31 + p_v4 + p_v41
-    total_f = f_s + f_sse + f_v3 + f_v31 + f_v4 + f_v41
+    p_v5, f_v5 = (0, 0)
+    if not args.skip_v05:
+        # Fresh apiToken-bearing client for the setupTestUser call.
+        v5_client = StreamableClient(base, args.token, insecure=args.insecure)
+        p_v5, f_v5 = run_v05_tests(v5_client, base, args.smoke_user,
+                                    args.smoke_parent, insecure=args.insecure)
+
+    total_p = p_s + p_sse + p_v3 + p_v31 + p_v4 + p_v41 + p_v5
+    total_f = f_s + f_sse + f_v3 + f_v31 + f_v4 + f_v41 + f_v5
     print(f"\n{BOLD}Result:{RESET} "
           f"{GREEN}{total_p} passed{RESET}, "
           f"{RED if total_f else GREY}{total_f} failed{RESET}")
