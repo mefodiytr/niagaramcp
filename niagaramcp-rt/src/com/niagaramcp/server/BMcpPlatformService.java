@@ -93,7 +93,9 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "knowledgeBackupCount",     type = "int",     defaultValue = "5"),
   @NiagaraProperty(name = "mcpProtocolVersion",       type = "String",  defaultValue = "\"\""),
   @NiagaraProperty(name = "maxHistoryRecordsPerQuery",type = "int",     defaultValue = "10000"),
-  @NiagaraProperty(name = "disabledTools",            type = "String",  defaultValue = "\"\"")
+  @NiagaraProperty(name = "disabledTools",            type = "String",  defaultValue = "\"\""),
+  @NiagaraProperty(name = "sseEnabled",               type = "boolean", defaultValue = "true"),
+  @NiagaraProperty(name = "streamableEnabled",        type = "boolean", defaultValue = "true")
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -148,6 +150,14 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static final Property disabledTools = newProperty(0, "", null);
   public String getDisabledTools() { return getString(disabledTools); }
   public void setDisabledTools(String v) { setString(disabledTools, v, null); }
+
+  public static final Property sseEnabled = newProperty(0, true, null);
+  public boolean getSseEnabled() { return getBoolean(sseEnabled); }
+  public void setSseEnabled(boolean v) { setBoolean(sseEnabled, v, null); }
+
+  public static final Property streamableEnabled = newProperty(0, true, null);
+  public boolean getStreamableEnabled() { return getBoolean(streamableEnabled); }
+  public void setStreamableEnabled(boolean v) { setBoolean(streamableEnabled, v, null); }
 
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
@@ -379,6 +389,18 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static int maxHistoryRecordsPerQuery() {
     BMcpPlatformService s = INSTANCE;
     return (s == null) ? 10000 : s.getMaxHistoryRecordsPerQuery();
+  }
+
+  /** @return whether the legacy SSE+messages transport is enabled (default true). */
+  public static boolean sseEnabled() {
+    BMcpPlatformService s = INSTANCE;
+    return (s == null) || s.getSseEnabled();
+  }
+
+  /** @return whether the Streamable HTTP transport is enabled (default true). */
+  public static boolean streamableEnabled() {
+    BMcpPlatformService s = INSTANCE;
+    return (s == null) || s.getStreamableEnabled();
   }
 
   /**

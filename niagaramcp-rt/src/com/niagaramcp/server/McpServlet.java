@@ -50,11 +50,19 @@ public final class McpServlet extends UnauthenticatedServlet {
     // /health is the ONE exception to Bearer-on-every-endpoint: it's monitoring
     // infrastructure used by external probes (k8s, Prometheus, watchdog scripts).
     // Returns counts/status booleans only — no station data, no equipment names.
+    // Health is also exempt from transport toggles — even when SSE+Streamable are
+    // both off, health stays accessible so monitors can detect that state.
     if ("health".equals(path)) { handleHealth(req, resp); return; }
     if (!checkServiceEnabled(resp)) return;
     if (!checkAuth(req, resp)) return;
-    if ("sse".equals(path)) { handleSse(req, resp); return; }
-    if ("mcp".equals(path)) { handleStreamableGet(req, resp); return; }
+    if ("sse".equals(path)) {
+      if (!checkTransportEnabled(resp, BMcpPlatformService.sseEnabled(), "sse")) return;
+      handleSse(req, resp); return;
+    }
+    if ("mcp".equals(path)) {
+      if (!checkTransportEnabled(resp, BMcpPlatformService.streamableEnabled(), "streamable-http")) return;
+      handleStreamableGet(req, resp); return;
+    }
     sendPlain(resp, 404, "Not Found: /" + path);
   }
 
@@ -63,8 +71,14 @@ public final class McpServlet extends UnauthenticatedServlet {
     if (!checkServiceEnabled(resp)) return;
     if (!checkAuth(req, resp)) return;
     String path = stripSlash(req.getPathInfo());
-    if ("messages".equals(path)) { handleMessage(req, resp); return; }
-    if ("mcp".equals(path))      { handleStreamablePost(req, resp); return; }
+    if ("messages".equals(path)) {
+      if (!checkTransportEnabled(resp, BMcpPlatformService.sseEnabled(), "sse")) return;
+      handleMessage(req, resp); return;
+    }
+    if ("mcp".equals(path)) {
+      if (!checkTransportEnabled(resp, BMcpPlatformService.streamableEnabled(), "streamable-http")) return;
+      handleStreamablePost(req, resp); return;
+    }
     sendPlain(resp, 404, "Not Found: /" + path);
   }
 
@@ -73,8 +87,37 @@ public final class McpServlet extends UnauthenticatedServlet {
     if (!checkServiceEnabled(resp)) return;
     if (!checkAuth(req, resp)) return;
     String path = stripSlash(req.getPathInfo());
-    if ("mcp".equals(path)) { handleStreamableDelete(req, resp); return; }
+    if ("mcp".equals(path)) {
+      if (!checkTransportEnabled(resp, BMcpPlatformService.streamableEnabled(), "streamable-http")) return;
+      handleStreamableDelete(req, resp); return;
+    }
     sendPlain(resp, 404, "Not Found: /" + path);
+  }
+
+  /**
+   * Reject the request with HTTP 503 + JSON-RPC-style {@code -32009} body when
+   * the targeted transport is disabled by an operator property.
+   * @return {@code true} if enabled (caller proceeds); {@code false} if rejected
+   *         (caller must return early).
+   */
+  private static boolean checkTransportEnabled(HttpServletResponse resp,
+                                                boolean enabled,
+                                                String transportName) throws IOException {
+    if (enabled) return true;
+    resp.setStatus(503);
+    resp.setContentType("application/json; charset=utf-8");
+    JSONObject err = new JSONObject();
+    JSONObject errBody = new JSONObject();
+    errBody.put("code", -32009);
+    errBody.put("message", "Transport disabled: " + transportName);
+    JSONObject errData = new JSONObject();
+    errData.put("transport", transportName);
+    errBody.put("data", errData);
+    err.put("error", errBody);
+    PrintWriter w = resp.getWriter();
+    w.write(err.toString());
+    w.flush();
+    return false;
   }
 
   // ================================================================

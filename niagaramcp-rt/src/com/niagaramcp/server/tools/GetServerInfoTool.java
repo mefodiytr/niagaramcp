@@ -20,8 +20,8 @@ import java.io.File;
 /** Diagnostic snapshot: version, uptime, sessions, knowledge file, registries. */
 public final class GetServerInfoTool implements Tool {
 
-  /** Module version string. Read by health endpoint and protocol-version property accessor. */
-  public static final String NIAGARAMCP_VERSION = "0.3.1";
+  /** Module version string. Read by health endpoint and serverInfo.version. */
+  public static final String NIAGARAMCP_VERSION = "0.4.0";
 
   @Override public String name()        { return "getServerInfo"; }
   @Override public String description() {
