@@ -27,14 +27,37 @@ import com.niagaramcp.server.tools.Tool;
  */
 public final class McpProtocol {
 
+  /** Default protocol version. Runtime value comes from
+   *  {@link BMcpPlatformService#mcpProtocolVersion()} (overridable via
+   *  {@code mcpProtocolVersion} property; default falls back here). */
   public static final String PROTOCOL_VERSION = "2025-06-18";
   public static final String SERVER_NAME = "niagaramcp";
   public static final String SERVER_VERSION = "1.0.0";
-  public static final int ERR_PARSE = -32700;
-  public static final int ERR_INVALID_REQUEST = -32600;
-  public static final int ERR_METHOD_NOT_FOUND = -32601;
-  public static final int ERR_INVALID_PARAMS = -32602;
-  public static final int ERR_INTERNAL = -32603;
+
+  // ----- JSON-RPC standard codes (per spec) ----------------------
+  public static final int ERR_PARSE             = -32700;
+  public static final int ERR_INVALID_REQUEST   = -32600;
+  public static final int ERR_METHOD_NOT_FOUND  = -32601;
+  public static final int ERR_INVALID_PARAMS    = -32602;
+  public static final int ERR_INTERNAL          = -32603;
+
+  // ----- niagaramcp-implementation-defined codes (v0.3.1) --------
+  /** Session not found or expired (used by Streamable HTTP transport). */
+  public static final int ERR_SESSION_NOT_FOUND     = -32001;
+  /** Tool name not registered (or disabled via property). */
+  public static final int ERR_TOOL_NOT_FOUND        = -32002;
+  /** Resource URI does not match any registered provider. */
+  public static final int ERR_RESOURCE_NOT_FOUND    = -32003;
+  /** Knowledge file unreadable (path missing / IO error). */
+  public static final int ERR_KNOWLEDGE_UNREADABLE  = -32004;
+  /** Schema validation failed for input data (knowledge YAML, tool args). */
+  public static final int ERR_SCHEMA_VALIDATION     = -32005;
+  /** Niagara ord could not be resolved (no such component). */
+  public static final int ERR_ORD_NOT_RESOLVABLE    = -32006;
+  /** Point has no BHistoryExt child (readHistory called on history-less point). */
+  public static final int ERR_HISTORY_EXT_MISSING   = -32007;
+  /** {@link javax.baja.alarm.BAlarmService} unavailable. */
+  public static final int ERR_ALARM_SERVICE_MISSING = -32008;
 
   public static JSONObject handle(JSONObject request, ToolRegistry registry, Session session) {
     Object id = request.has("id") ? request.get("id") : null;
@@ -84,11 +107,13 @@ public final class McpProtocol {
       if (isNotification) {
         return null;
       }
-      return error(id, ERR_METHOD_NOT_FOUND, "Method not found: " + method);
+      JSONObject mdata = new JSONObject();
+      mdata.put("method", method);
+      return error(id, ERR_METHOD_NOT_FOUND, "Method not found: " + method, mdata);
     } catch (RpcException e) {
-      return error(id, e.code, e.getMessage());
+      return error(id, e.code, e.getMessage(), e.data);
     } catch (Exception e) {
-      return error(id, ERR_INTERNAL, "Internal error: " + e.getMessage());
+      return error(id, ERR_INTERNAL, "Internal error: " + e.getMessage(), null);
     }
   }
 
@@ -103,7 +128,7 @@ public final class McpProtocol {
     info.put("version", SERVER_VERSION);
 
     JSONObject result = new JSONObject();
-    result.put("protocolVersion", PROTOCOL_VERSION);
+    result.put("protocolVersion", BMcpPlatformService.mcpProtocolVersion());
     result.put("capabilities", caps);
     result.put("serverInfo", info);
     return result;
@@ -150,7 +175,11 @@ public final class McpProtocol {
     String uri = params.optString("uri", "");
     if (uri.length() == 0) throw new RpcException(ERR_INVALID_PARAMS, "Missing 'uri' parameter");
     Resource r = reg.find(uri);
-    if (r == null) throw new RpcException(ERR_INVALID_PARAMS, "Unknown resource: " + uri);
+    if (r == null) {
+      JSONObject data = new JSONObject();
+      data.put("uri", uri);
+      throw new RpcException(ERR_RESOURCE_NOT_FOUND, "Unknown resource: " + uri, data);
+    }
     String body;
     try {
       body = r.read(uri);
@@ -192,7 +221,12 @@ public final class McpProtocol {
     String name = params.optString("name", "");
     if (name.length() == 0) throw new RpcException(ERR_INVALID_PARAMS, "Missing 'name'");
     Prompt p = reg.get(name);
-    if (p == null) throw new RpcException(ERR_INVALID_PARAMS, "Unknown prompt: " + name);
+    if (p == null) {
+      JSONObject data = new JSONObject();
+      data.put("promptName", name);
+      // No dedicated code for prompts in v0.3.1 set; use INVALID_PARAMS with data.
+      throw new RpcException(ERR_INVALID_PARAMS, "Unknown prompt: " + name, data);
+    }
     JSONObject promptArgs = params.optJSONObject("arguments");
     if (promptArgs == null) promptArgs = new JSONObject();
     JSONArray messages = p.render(promptArgs);
@@ -225,7 +259,9 @@ public final class McpProtocol {
     String name = params.optString("name", "");
     Tool t = registry.get(name);
     if (t == null) {
-      throw new RpcException(ERR_INVALID_PARAMS, "Unknown tool: " + name);
+      JSONObject data = new JSONObject();
+      data.put("toolName", name);
+      throw new RpcException(ERR_TOOL_NOT_FOUND, "Unknown tool: " + name, data);
     }
     JSONObject args = params.optJSONObject("arguments");
     if (args == null) {
@@ -262,10 +298,11 @@ public final class McpProtocol {
     return r;
   }
 
-  private static JSONObject error(Object id, int code, String message) {
+  private static JSONObject error(Object id, int code, String message, JSONObject data) {
     JSONObject err = new JSONObject();
     err.put("code", code);
     err.put("message", message);
+    if (data != null) err.put("data", data);
 
     JSONObject r = new JSONObject();
     r.put("jsonrpc", "2.0");
@@ -277,10 +314,16 @@ public final class McpProtocol {
   private static final class RpcException extends RuntimeException {
     private static final long serialVersionUID = 1L;
     final int code;
+    final JSONObject data;
 
     RpcException(int code, String msg) {
+      this(code, msg, null);
+    }
+
+    RpcException(int code, String msg, JSONObject data) {
       super(msg);
       this.code = code;
+      this.data = data;
     }
   }
 }

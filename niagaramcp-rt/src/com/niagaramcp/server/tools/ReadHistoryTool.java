@@ -59,7 +59,10 @@ public final class ReadHistoryTool implements Tool {
     String toS    = args.optString("to", null);
     int limit     = args.optInt("limit", DEFAULT_LIMIT);
     if (limit < 1) limit = 1;
-    if (limit > MAX_LIMIT) limit = MAX_LIMIT;
+    // v0.3.1: respect operator override; cap at the lower of property and built-in MAX_LIMIT.
+    int maxAllowed = Math.min(MAX_LIMIT, com.niagaramcp.server.BMcpPlatformService.maxHistoryRecordsPerQuery());
+    if (maxAllowed < 1) maxAllowed = MAX_LIMIT;
+    if (limit > maxAllowed) limit = maxAllowed;
     String agg    = args.optString("aggregation", "none");
 
     BAbsTime from = parseTime(fromS);
