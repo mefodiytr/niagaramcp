@@ -22,8 +22,8 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Представление JSON-объекта: неупорядоченной коллекции пар имя/значение.
- * Поддерживает парсинг JSON-текста, построение объекта программно и сериализацию обратно в JSON.
+ * JSON object — an unordered collection of name/value pairs.
+ * Supports parsing JSON text, programmatic construction, and re-serialisation.
  */
 public class JSONObject {
    static final Pattern NUMBER_PATTERN = Pattern.compile("-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?");

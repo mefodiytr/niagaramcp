@@ -9,7 +9,7 @@ import java.util.Iterator;
 import java.util.List;
 
 /**
- * Реализация JSON Pointer (RFC 6901) для адресации узлов в JSON-документе.
+ * JSON Pointer (RFC 6901) implementation for addressing nodes in a JSON document.
  */
 public class JSONPointer {
    private static final String ENCODING = "utf-8";

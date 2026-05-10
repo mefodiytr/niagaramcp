@@ -1,34 +1,34 @@
 package com.niagaramcp.json;
 
 /**
- * Исключение, возникающее при ошибках парсинга или обработки JSON-данных.
+ * Exception raised on JSON parse or processing failures.
  */
 public class JSONException extends RuntimeException {
    private static final long serialVersionUID = 0L;
 
    /**
-    * Создаёт исключение с указанным сообщением.
+    * Construct with the given message.
     *
-    * @param message текст сообщения об ошибке
+    * @param message error description
     */
    public JSONException(String message) {
       super(message);
    }
 
    /**
-    * Создаёт исключение с сообщением и причиной.
+    * Construct with the given message and underlying cause.
     *
-    * @param message текст сообщения об ошибке
-    * @param cause исходное исключение-причина
+    * @param message error description
+    * @param cause   underlying exception
     */
    public JSONException(String message, Throwable cause) {
       super(message, cause);
    }
 
    /**
-    * Создаёт исключение на основе переданного Throwable.
+    * Construct from an underlying Throwable, copying its message.
     *
-    * @param cause исходное исключение-причина
+    * @param cause underlying exception
     */
    public JSONException(Throwable cause) {
       super(cause.getMessage(), cause);

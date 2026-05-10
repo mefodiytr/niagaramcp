@@ -1,25 +1,25 @@
 package com.niagaramcp.json;
 
 /**
- * Исключение, возникающее при ошибке разрешения JSON-указателя (JSON Pointer, RFC 6901).
+ * Exception raised on JSON Pointer (RFC 6901) resolution failure.
  */
 public class JSONPointerException extends JSONException {
    private static final long serialVersionUID = 8872944667561856751L;
 
    /**
-    * Создаёт исключение с указанным сообщением.
+    * Construct with the given message.
     *
-    * @param message текст сообщения об ошибке
+    * @param message error description
     */
    public JSONPointerException(String message) {
       super(message);
    }
 
    /**
-    * Создаёт исключение с сообщением и причиной.
+    * Construct with the given message and underlying cause.
     *
-    * @param message текст сообщения об ошибке
-    * @param cause исходное исключение-причина
+    * @param message error description
+    * @param cause   underlying exception
     */
    public JSONPointerException(String message, Throwable cause) {
       super(message, cause);

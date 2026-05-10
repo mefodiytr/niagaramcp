@@ -7,7 +7,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Аннотация, помечающая метод-геттер как исключаемый при автоматической сериализации в JSON.
+ * Marks a getter method as excluded from automatic JSON bean serialization.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
