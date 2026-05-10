@@ -50,6 +50,7 @@ import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
 import com.niagaramcp.server.tools.CheckKnowledgeIntegrityTool;
 import com.niagaramcp.server.tools.CreateComponentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTool;
+import com.niagaramcp.server.tools.InvokeActionTool;
 import com.niagaramcp.server.tools.RemoveComponentTool;
 import com.niagaramcp.server.tools.SetSlotTool;
 import com.niagaramcp.server.tools.SetupTestUserTool;
@@ -357,6 +358,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     // v0.5.1: M1 write-tools tail
     r.register((Tool) new RemoveComponentTool());
     r.register((Tool) new SetSlotTool());
+    r.register((Tool) new InvokeActionTool());
     REGISTRY = r;
 
     // v0.3 — Resources
