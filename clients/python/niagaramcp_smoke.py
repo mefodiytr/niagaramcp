@@ -69,7 +69,9 @@ def http_request(url, method="GET", headers=None, body=None,
 
 def parse_json(raw):
     try:
-        return json.loads(raw.decode("utf-8") or "{}")
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        return json.loads(raw or "{}")
     except (UnicodeDecodeError, json.JSONDecodeError):
         return None
 
