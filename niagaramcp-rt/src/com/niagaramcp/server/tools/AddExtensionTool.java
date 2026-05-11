@@ -4,7 +4,6 @@
  */
 package com.niagaramcp.server.tools;
 
-import javax.baja.naming.BOrd;
 import javax.baja.sys.BComponent;
 import javax.baja.sys.BObject;
 import javax.baja.sys.BValue;
@@ -31,16 +30,16 @@ import com.niagaramcp.server.auth.UserContextGateway;
  * vs. creating a fresh logical component) and so MCP-aware clients
  * can disambiguate.
  *
- * <h3>Pre-check limitations</h3>
- * v0.5.1 does NOT pre-check whether the target type is applicable
- * under the requested parent (e.g. a BHistoryExt under a BFolder
- * usually doesn't make sense). Niagara surfaces incompatibility at
- * {@code add()} time as an exception, which the gateway maps to
- * {@code -32603 ERR_INTERNAL} with the underlying message. A
- * dedicated {@code -32015 ERR_EXTENSION_NOT_APPLICABLE} mapping
- * requires a stable, public predicate API for type-applicability
- * — TBD; future commits or v0.5.2 may pre-check via tags or the
- * {@code BTypeSpec.canHaveChildOf} family if that API is exposed.
+ * <h3>Applicability pre-check (v0.5.2)</h3>
+ * Before the add, the tool runs Niagara's own predicates —
+ * {@code parent.isChildLegal(ext)} and {@code ext.isParentLegal(parent)}
+ * (the same pair {@code add()}'s internal {@code checkAdd} consults for
+ * constrained components, e.g. a history ext that only attaches to certain
+ * point types). If either is false the add is refused up front with
+ * {@code -32015 ERR_EXTENSION_NOT_APPLICABLE} and a {@code reason}, rather
+ * than letting Niagara throw at {@code add()} time (which would surface as
+ * a generic {@code -32603}). The defaults return true, so unconstrained
+ * parents (folders, etc.) accept anything as before.
  *
  * <h3>Args</h3>
  * <pre>
@@ -64,11 +63,16 @@ import com.niagaramcp.server.auth.UserContextGateway;
  *
  * <h3>Errors</h3>
  * <ul>
- *   <li>{@code -32602} missing arg / unknown nameStrategy</li>
+ *   <li>{@code -32602} missing arg / unknown nameStrategy / name collision
+ *       under {@code nameStrategy=fail}</li>
  *   <li>{@code -32006} parentOrd not resolvable / not BComponent</li>
  *   <li>{@code -32005} extensionType doesn't load / abstract</li>
+ *   <li>{@code -32015} ERR_EXTENSION_NOT_APPLICABLE — isChildLegal /
+ *       isParentLegal pre-check failed; {@code data{parentOrd, parentType,
+ *       extensionType, reason}}</li>
  *   <li>{@code -32010} permission denied</li>
  *   <li>{@code -32011} user-Context required</li>
+ *   <li>{@code -32603} the add otherwise failed (Niagara's message)</li>
  * </ul>
  */
 public final class AddExtensionTool implements Tool {
@@ -81,9 +85,8 @@ public final class AddExtensionTool implements Tool {
   @Override public String description() {
     return "Add an extension instance (history/alarm/proxy ext, ...) as a child of " +
            "an existing component under user-Context. Args: {parentOrd, extensionType, " +
-           "name, nameStrategy?}. Niagara enforces type-applicability at add() time; " +
-           "incompatible parent/extension pairs surface as -32603 with the underlying " +
-           "message until v0.5.2 adds a pre-check.";
+           "name, nameStrategy?}. Pre-checks applicability (isChildLegal/isParentLegal); " +
+           "incompatible parent/extension pairs are refused with -32015.";
   }
 
   @Override public String schemaJson() {
@@ -160,6 +163,27 @@ public final class AddExtensionTool implements Tool {
           oneField("extensionType", typeSpec));
     }
     final BValue value = (BValue) inst;
+
+    // v0.5.2: applicability pre-check. Niagara's add() consults
+    // isChildLegal(child) / isParentLegal(parent) for constrained
+    // components; surface a clean -32015 instead of a generic -32603.
+    // Defaults return true, so unconstrained parents accept anything.
+    if (value instanceof BComponent) {
+      BComponent extInst = (BComponent) value;
+      boolean parentOk = extInst.isParentLegal(parent);
+      boolean childOk  = parent.isChildLegal(extInst);
+      if (!parentOk || !childOk) {
+        JSONObject d = new JSONObject();
+        d.put("parentOrd", parentOrd);
+        d.put("parentType", parent.getType().getTypeSpec().toString());
+        d.put("extensionType", typeSpec);
+        d.put("reason", !parentOk
+            ? "extension.isParentLegal(parent) returned false"
+            : "parent.isChildLegal(extension) returned false");
+        throw new McpProtocol.RpcException(McpProtocol.ERR_EXTENSION_NOT_APPLICABLE,
+            "Extension type " + typeSpec + " is not applicable under " + parentOrd, d);
+      }
+    }
 
     String resolvedName = name;
     if (parent.get(name) != null) {
