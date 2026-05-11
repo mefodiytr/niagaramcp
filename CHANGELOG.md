@@ -5,11 +5,68 @@ All notable changes to **niagaramcp** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — v0.5.3 link conversion
+## [Unreleased]
 
-Branch `v0.5.3-link-convert` off `main` (v0.5.2 merged in `7524e90`).
+_Nothing yet._
 
-### Added
+---
+
+## [0.5.3] — 2026-05-11
+
+The **user-Context write** milestone. Combines four increments that landed
+together (v0.5 → v0.5.3): a per-user permission/audit gateway, the M1
+write-tool set, write-tool polish, and link conversion. Protocol unchanged
+(MCP 2025-06-18); the legacy SSE+messages transport is retained alongside
+Streamable HTTP. `tools/list` 38 → **46**. Validated **34/34** by the smoke
+client against a live 4.15.3.28 station.
+
+**Highlights**
+
+- **User-Context auth** — bearer tokens resolve to a `BUser` via a per-user
+  salted-SHA-256 `mcp:tokenHash` tag (constant-time compare; salt =
+  `BMcpPlatformService.tokenSalt`). Mutating Baja calls run under a
+  `Context` impersonating that user, so Niagara's own permission model
+  applies; every mutation is audited (JSON-lines file + Workbench audit
+  history). The legacy `apiToken` stays a read-only service identity. New
+  error codes `-32010 ERR_PERMISSION_DENIED` / `-32011 ERR_USER_NOT_FOUND`.
+- **M1 write tools** — `createComponent`, `removeComponent` (dryRun +
+  inbound-link safety), `setSlot`, `clearSlot`, `invokeAction`,
+  `addExtension` (applicability pre-check → `-32015`), `linkSlots`
+  (+ optional `converterType` → `BConversionLink`), `unlinkSlots`
+  (`{linkOrd}` or `{sinkOrd, linkName}`), `commitStation`. New error codes
+  `-32013 … -32016`.
+- **Protocol** — `tools/list` now exposes `annotations`
+  (readOnly/destructive/idempotent/openWorldHint) and `requiresUserContext`;
+  `tools/call` results auto-promote JSON text to `structuredContent`
+  (MCP §5.4) and carry `result.errorCode` / `result.errorData` for
+  tool-thrown structured errors.
+- `tools.Ords` helper — write tools resolve ords against the running station
+  (relative `slot:/...` works as well as `station:|slot:/...`) and emit
+  fully-qualified result ords.
+- `BValueCoercer` — shared JSON↔BSimple coercion for
+  `setSlot`/`invokeAction`/`clearSlot`.
+- **Docs** — new `docs/API.md` (single-page API reference: endpoints, auth,
+  all 46 tools, error codes, config); `getFeatureDump` error-code table
+  extended to `-32016`; smoke client +9 steps (v0.5 / v0.5.1 / v0.5.2
+  coverage).
+
+Per-version detail in the `### v0.5.x` subsections below.
+
+### Roadmap (post-0.5.3)
+
+- e2e smoke fixtures for `linkSlots` (incl. `converterType`) and
+  `addExtension`/`-32015` — need station-specific compatible slot pairs /
+  a known-incompatible ext+parent.
+- Outbound-link detection for `removeComponent` (full station walk).
+- M2 tool set; Workbench `generateUserToken` action.
+
+---
+
+### v0.5.3 — link conversion
+
+Branch `v0.5.3-link-convert`; merged in `8a8b16b`.
+
+#### Added
 
 - **`linkSlots` `converterType` arg** (optional, `"module:Type"`). When
   set, the link added is a `BConversionLink(source, sourceSlot, sinkSlot,
@@ -24,17 +81,9 @@ Branch `v0.5.3-link-convert` off `main` (v0.5.2 merged in `7524e90`).
   Per design Q6 there is **no** `convert: true` auto-pick (no surprise
   conversions; no stable public converter registry to walk).
 
-### Known follow-ups
-
-- e2e smoke fixtures for `linkSlots` (incl. the `converterType` path) and
-  `addExtension`/`-32015` — need station-specific compatible slot pairs /
-  a known-incompatible ext+parent.
-- Outbound-link detection for `removeComponent` (full station walk).
-- M2 tool set; Workbench `generateUserToken` action.
-
 ---
 
-## [Unreleased] — v0.5.2 write-tool polish
+### v0.5.2 — write-tool polish
 
 Branch `v0.5.2-write-tools-polish` off the post-merge `main`
 (v0.5 + v0.5.1 merged in `3189c1d`). No new infrastructure — small
@@ -94,7 +143,7 @@ follow-ups to the M1 write-tool set.
 
 ---
 
-## [Unreleased] — v0.5.1 write-tools tail (stacked on v0.5)
+### v0.5.1 — write-tools tail
 
 M1 write-tool set complete. Each tool follows the v0.5
 `createComponent` reference shape: requiresUserContext=true,
@@ -227,7 +276,7 @@ addExtension, linkSlots, unlinkSlots, commitStation.
 
 ---
 
-## [Unreleased] — v0.5 user-context work in progress
+### v0.5 — user-Context gateway + per-user audit
 
 User-Context gateway + per-user audit, foundation for write-tools that
 mutate the station component tree under the calling user's Niagara

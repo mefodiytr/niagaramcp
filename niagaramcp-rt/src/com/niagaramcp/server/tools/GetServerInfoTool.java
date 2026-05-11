@@ -20,8 +20,13 @@ import java.io.File;
 /** Diagnostic snapshot: version, uptime, sessions, knowledge file, registries. */
 public final class GetServerInfoTool implements Tool {
 
-  /** Module version string. Read by health endpoint and serverInfo.version. */
-  public static final String NIAGARAMCP_VERSION = "0.4.1";
+  /**
+   * niagaramcp release version — surfaced by {@code getServerInfo.version},
+   * the {@code /health} endpoint, and {@code getFeatureDump.version}. Bump
+   * on each release; this is the niagaramcp app version, distinct from the
+   * Niagara module-manifest version (set in the build).
+   */
+  public static final String NIAGARAMCP_VERSION = "0.5.3";
 
   @Override public String name()        { return "getServerInfo"; }
   @Override public String getCategory() { return "diagnostic"; }
