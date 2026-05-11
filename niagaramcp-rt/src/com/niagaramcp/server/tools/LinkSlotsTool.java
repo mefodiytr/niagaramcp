@@ -168,11 +168,13 @@ public final class LinkSlotsTool implements Tool {
     });
 
     // Fully-qualified ord (e.g. "station:|slot:/Logic/Setpoint/RoomTempLink")
-    // so unlinkSlots can resolve it without prefixing it itself.
-    Object mounted = sink.get(added.getName());
-    String linkOrd = (mounted instanceof BComponent)
-        ? Ords.stationOrd((BComponent) mounted) : null;
-    if (linkOrd == null) linkOrd = sinkOrdStr + "/" + linkName;
+    // so unlinkSlots can resolve it without prefixing it itself. A BLink is
+    // a BRelation, not a BComponent, so we build it from the sink's ord +
+    // the added slot name rather than from the link's (nonexistent) slot path.
+    String sinkDisplay = Ords.stationOrd(sink);
+    String linkOrd = (sinkDisplay != null)
+        ? sinkDisplay + "/" + added.getName()
+        : sinkOrdStr + "/" + added.getName();
 
     JSONObject result = new JSONObject();
     result.put("linkOrd",   linkOrd);
