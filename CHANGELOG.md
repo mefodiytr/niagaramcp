@@ -5,6 +5,66 @@ All notable changes to **niagaramcp** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — v0.5.2 write-tool polish
+
+Branch `v0.5.2-write-tools-polish` off the post-merge `main`
+(v0.5 + v0.5.1 merged in `3189c1d`). No new infrastructure — small
+follow-ups to the M1 write-tool set.
+
+### Added
+
+- **`clearSlot`** (`category: "write"`, `requiresUserContext=true`,
+  `MUTATION`) — resets a Property slot to its declared default
+  (`Property.getDefaultValue()`) under the user-Context gateway.
+  Distinct from `setSlot` (writes a caller value) — works for any
+  Property slot type, not just BSimple, since there's no JSON value to
+  coerce. Args `{ord, slotName}`; result
+  `{ord, slotName, previousValue, defaultValue, type, changed}`.
+  `tools/list` 45 → 46.
+- **`unlinkSlots` second arg form `{sinkOrd, linkName}`** alongside the
+  existing `{linkOrd}` — mirrors how `linkSlots` returns its result and
+  how a link reads in the nav tree (a named slot on the sink).
+  Validation is "`linkOrd` XOR (`sinkOrd` & `linkName`)".
+- **`addExtension` applicability pre-check** — runs Niagara's own
+  `parent.isChildLegal(ext)` / `ext.isParentLegal(parent)` predicates
+  before the add; an incompatible pair is refused with
+  **`-32015 ERR_EXTENSION_NOT_APPLICABLE`** (`data{parentOrd, parentType,
+  extensionType, reason}`) instead of a generic `-32603` at `add()` time.
+  Activates the `-32015` code that was declared-but-dormant in v0.5.1.
+  Defaults return true, so unconstrained parents (folders) are unaffected.
+
+### Changed
+
+- **`BValueCoercer`** — extracted the near-identical JSON↔BSimple
+  coercion (`coerce` / `toInt`/`toLong`/`toDouble` / `toJsonScalar` +
+  the bespoke `Unsupported*Exception`) from `SetSlotTool` and
+  `InvokeActionTool` into one package-private helper. Also exposes
+  `typeSpec(BValue)` and `isSupported(BValue)`. No behavior change.
+- **`setSlot`** — `null` value now points the caller at `clearSlot`
+  (was "use clearSlot when added"); messages reworded.
+- **Fixed:** `linkSlots`/`unlinkSlots` were emitting *relative*
+  `slot:/...` link ords — a `BLink` is a `BRelation`, not a
+  `BComponent`, so it has no `getSlotPath()` and the `instanceof
+  BComponent` branch (added in `cadf51c`) always fell through to
+  `getSlotPathOrd().toString()`. Both now build the link ord from the
+  sink's fully-qualified ord + the link slot name.
+- `getFeatureDump` error-code table: `-32015` is now active, not reserved.
+- Smoke client: new step 28 `clearSlot` (resets the `note` prop created
+  in step 27 and asserts `changed`); steps renumbered 26-32; banner
+  string un-staled to "v0.2.0 → v0.5.2".
+
+### Known follow-ups (still queued)
+
+- Auto-pick `BTypeConverter` for `linkSlots` (`convert: true` /
+  `converterType`) — needs the converter-registry walk; deferred.
+- e2e smoke fixtures for `addExtension` (incl. the `-32015` path),
+  `linkSlots`, `unlinkSlots {sinkOrd,linkName}` — need station-specific
+  compatible point pairs / a known-incompatible ext+parent.
+- Outbound-link detection for `removeComponent` (full station walk).
+- M2 tool set; Workbench `generateUserToken` action.
+
+---
+
 ## [Unreleased] — v0.5.1 write-tools tail (stacked on v0.5)
 
 M1 write-tool set complete. Each tool follows the v0.5

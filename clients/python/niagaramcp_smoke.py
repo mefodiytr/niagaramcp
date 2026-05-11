@@ -790,7 +790,8 @@ def run_v05_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure=
 
 
 def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure=False):
-    """v0.5.1: M1 write-tools tail (setSlot, invokeAction, commitStation, removeComponent).
+    """v0.5.1 + v0.5.2: write-tools tail (setSlot/clearSlot/invokeAction/
+    commitStation/removeComponent).
 
     Reuses the same v0.5 pre-flight (test BUser pre-created in Workbench,
     enableTestSetup=true). Generates a fresh token, binds it, reconnects
@@ -798,21 +799,22 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
     smoke_parent_ord, exercises the new tools, then removes the Folder
     at the end (also testing removeComponent's dryRun+actual cycle).
 
-    Steps 26-31:
-      26  createComponent — v0.5.1's own throwaway fixture
-      27  setSlot — happy path on the just-created Folder's displayName
-      28  invokeAction with bogus action name — error path, expects -32014
-      29  commitStation — happy path
-      30  removeComponent dryRun (default true) — preview, no mutation
-      31  removeComponent dryRun=false — actual cleanup of v0.5.1 fixture
+    Steps 26-32:
+      26  createComponent — v0.5.1's own throwaway fixture (a baja:Folder)
+      27  createComponent baja:String "note" on the fixture, then setSlot it
+      28  clearSlot "note" — reset to the type default (v0.5.2)
+      29  invokeAction with bogus action name — error path, expects -32014
+      30  commitStation — happy path
+      31  removeComponent dryRun (default true) — preview, no mutation
+      32  removeComponent dryRun=false — actual cleanup of the fixture
 
-    Skipped from v0.5.1 smoke (exercised at Java compile + lint level
-    only; e2e fixtures queued for v0.5.2):
-      addExtension — needs an installed extension type the smoke can
-                     count on (history/alarm extensions are common but
-                     vary by station).
+    Skipped (exercised at Java compile + lint level only; e2e fixtures
+    still queued):
+      addExtension (+ its -32015 path) — needs a known extension type and a
+                     known-incompatible parent on the test station.
       linkSlots / unlinkSlots — need real source+sink slots with
-                                compatible types.
+                                compatible types. (unlinkSlots gained a
+                                {sinkOrd, linkName} arg form in v0.5.2.)
     """
     import secrets
     import time
@@ -909,14 +911,35 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
                 fail(f"unexpected setSlot result: {j.get('result')}")
                 f += 1
 
-    # --- Step 28: invokeAction with bogus name → tool error, errorCode -32014 ---
+    # --- Step 28: clearSlot — reset "note" to its declared default (v0.5.2) ---
+    step(28, 'clearSlot "note" → reset to default')
+    status, _, body = user_client.tools_call(
+        "clearSlot",
+        {"ord": fixture_ord, "slotName": "note"},
+        request_id=2605)
+    j = parse_json(body) or {}
+    if "error" in j:
+        e = j["error"]
+        fail(f"clearSlot failed: {e.get('code')} {e.get('message')}; data={e.get('data')}")
+        f += 1
+    else:
+        sc = j.get("result", {}).get("structuredContent", {})
+        if sc.get("changed") is True:
+            ok(f"reset; previousValue={sc.get('previousValue')!r}; "
+               f"defaultValue={sc.get('defaultValue')!r}; type={sc.get('type')}")
+            p += 1
+        else:
+            fail(f"unexpected clearSlot result: {j.get('result')}")
+            f += 1
+
+    # --- Step 29: invokeAction with bogus name → tool error, errorCode -32014 ---
     # MCP reports tool failures via isError content (not a JSON-RPC error);
     # niagaramcp carries the RpcException code on result.errorCode (v0.5.1).
-    step(28, "invokeAction with bogus actionName → expect tool error errorCode=-32014")
+    step(29, "invokeAction with bogus actionName → expect tool error errorCode=-32014")
     status, _, body = user_client.tools_call(
         "invokeAction",
         {"ord": fixture_ord, "actionName": "nonexistentAction_xyzzy"},
-        request_id=2605)
+        request_id=2606)
     j = parse_json(body) or {}
     res = j.get("result") or {}
     if res.get("isError") and res.get("errorCode") == -32014:
@@ -929,10 +952,10 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
         fail(f"expected errorCode -32014; got {j.get('result') or j.get('error')}")
         f += 1
 
-    # --- Step 29: commitStation (happy path) ---
-    step(29, "commitStation")
+    # --- Step 30: commitStation (happy path) ---
+    step(30, "commitStation")
     status, _, body = user_client.tools_call(
-        "commitStation", {}, request_id=2606)
+        "commitStation", {}, request_id=2607)
     j = parse_json(body) or {}
     if "error" in j:
         e = j["error"]
@@ -948,10 +971,10 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
             fail(f"unexpected commitStation result: {j.get('result')}")
             f += 1
 
-    # --- Step 30: removeComponent dryRun (default true) ---
-    step(30, "removeComponent dryRun preview")
+    # --- Step 31: removeComponent dryRun (default true) ---
+    step(31, "removeComponent dryRun preview")
     status, _, body = user_client.tools_call(
-        "removeComponent", {"ord": fixture_ord}, request_id=2607)
+        "removeComponent", {"ord": fixture_ord}, request_id=2608)
     j = parse_json(body) or {}
     if "error" in j:
         e = j["error"]
@@ -966,12 +989,12 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
             fail(f"unexpected dryRun result: {j.get('result')}")
             f += 1
 
-    # --- Step 31: removeComponent dryRun=false (actual cleanup) ---
-    step(31, "removeComponent dryRun=false (cleanup fixture)")
+    # --- Step 32: removeComponent dryRun=false (actual cleanup) ---
+    step(32, "removeComponent dryRun=false (cleanup fixture)")
     status, _, body = user_client.tools_call(
         "removeComponent",
         {"ord": fixture_ord, "dryRun": False},
-        request_id=2608)
+        request_id=2609)
     j = parse_json(body) or {}
     if "error" in j:
         e = j["error"]
@@ -1024,7 +1047,7 @@ def main():
     args = ap.parse_args()
 
     base = f"{args.scheme}://{args.host}:{args.port}/{args.module}"
-    print(f"{BOLD}niagaramcp smoke test (v0.2.0 + v0.3.0 + v0.3.1 + v0.4 + v0.4.1){RESET}")
+    print(f"{BOLD}niagaramcp smoke test (v0.2.0 → v0.5.2){RESET}")
     print(f"  base URL: {base}")
     print(f"  insecure: {args.insecure}")
     print(f"  skip SSE: {args.skip_sse}")
