@@ -348,6 +348,19 @@ removed from the embedded `com.niagaramcp.json` package. Jar size
 
 ---
 
+## Link conversion (v0.5.3)
+
+- **`linkSlots` `converterType` arg** — `linkSlots {..., "converterType":
+  "module:Type"}` adds a `BConversionLink` instead of a plain `BLink`: the
+  type must resolve to a `javax.baja.util.BConverter`, the `checkLink`
+  type-mismatch refusal (`-32016`) is bypassed (you're explicitly bridging
+  the mismatch — the bypassed reason shows up as `linkCheckNote` in the
+  result), and the result gains `linkType` / `converter`. An incompatible
+  converter → a faulted link slot or `add()` rejects it (`-32603`). There
+  is no `convert: true` auto-pick — name the converter explicitly.
+
+---
+
 ## Write-tool polish (v0.5.2)
 
 Small follow-ups to the M1 set — one new tool, one new arg form, a

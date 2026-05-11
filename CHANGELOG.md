@@ -5,6 +5,35 @@ All notable changes to **niagaramcp** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — v0.5.3 link conversion
+
+Branch `v0.5.3-link-convert` off `main` (v0.5.2 merged in `7524e90`).
+
+### Added
+
+- **`linkSlots` `converterType` arg** (optional, `"module:Type"`). When
+  set, the link added is a `BConversionLink(source, sourceSlot, sinkSlot,
+  converter)` instead of a plain `BLink`, the type must resolve to a
+  `javax.baja.util.BConverter` (else `-32602`/`-32005`), and the
+  `checkLink` type-mismatch refusal (`-32016`) is bypassed — the caller is
+  explicitly bridging the mismatch; the (invalid) check result is recorded
+  in the result as `linkCheckNote`. Result gains `linkType`
+  (`"link"`/`"conversionLink"`) and, when a converter was used,
+  `converter`. An incompatible named converter → a faulted link slot
+  (inspect it) or `add()` rejects it → `-32603`.
+  Per design Q6 there is **no** `convert: true` auto-pick (no surprise
+  conversions; no stable public converter registry to walk).
+
+### Known follow-ups
+
+- e2e smoke fixtures for `linkSlots` (incl. the `converterType` path) and
+  `addExtension`/`-32015` — need station-specific compatible slot pairs /
+  a known-incompatible ext+parent.
+- Outbound-link detection for `removeComponent` (full station walk).
+- M2 tool set; Workbench `generateUserToken` action.
+
+---
+
 ## [Unreleased] — v0.5.2 write-tool polish
 
 Branch `v0.5.2-write-tools-polish` off the post-merge `main`
