@@ -335,6 +335,20 @@ JSON-ответ.
 
 ---
 
+## Link conversion (v0.5.3)
+
+- **`linkSlots` `converterType` arg** — `linkSlots {..., "converterType":
+  "module:Type"}` добавляет `BConversionLink` вместо обычного `BLink`:
+  тип должен резолвиться в `javax.baja.util.BConverter`, отбивка
+  type-mismatch'а (`-32016`) от `checkLink` пропускается (вы явно мостите
+  несовместимость — пропущенная причина уходит в `linkCheckNote`
+  результата), результат получает `linkType` / `converter`.
+  Несовместимый конвертер → faulted link-слот или `add()` отказывает
+  (`-32603`). Авто-подбора `convert: true` нет — конвертер указывается
+  явно.
+
+---
+
 ## Write-tool polish (v0.5.2)
 
 Небольшие follow-up'ы к M1-набору — один новый тул, новая форма

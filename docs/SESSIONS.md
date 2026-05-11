@@ -1,7 +1,53 @@
-# Session notes: v0.2.0 → v0.5.2 release work
+# Session notes: v0.2.0 → v0.5.3 release work
 
-**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1 → v0.5 → v0.5.1 → v0.5.2
+**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1 → v0.5 → v0.5.1 → v0.5.2 → v0.5.3
 **Время:** несколько сессий, май 2026.
+
+---
+
+## v0.5.3 — link conversion (2026-05-11)
+
+**Branch:** `v0.5.3-link-convert` — off `main` (v0.5.2 смержен в `7524e90`).
+**Commits:** 1 feature (`c`) + docs. **Build:** `:compileJava` green.
+
+### Что добавлено
+
+- **`linkSlots` `converterType` arg** (опциональный, `"module:Type"`) —
+  при наличии: тип грузится и должен быть `javax.baja.util.BConverter`
+  (иначе `-32602`/`-32005`); отбивка `-32016` от `checkLink`
+  пропускается (вызывающий явно мостит несовместимость — invalid-reason
+  пишется в `linkCheckNote` результата); добавляется `BConversionLink(
+  source, sourceSlot, sinkSlot, converter)` вместо обычного `BLink` из
+  `makeLink()`. Result получает `linkType` (`"link"`/`"conversionLink"`)
+  и (если конвертер задан) `converter`. Несовместимый named-конвертер →
+  faulted link-слот или `add()` отказывает → `-32603`. По дизайн-решению
+  Q6 — никакого `convert: true` авто-подбора.
+
+### Что обнаружилось при разработке
+
+- **`BConversionLink extends BLink`** — конструктор `(BComponent source,
+  Slot sourceSlot, Slot sinkSlot, BConverter converter)`; `getConverter()
+  /setConverter()`. Никакого `makeConversionLink()` — используем
+  конструктор напрямую + `sink.add(name, link, cx)`.
+- **`BConverter`** — `abstract extends BStruct`; `convert(BObject,
+  BObject, Context)`. Concrete-сабклассы: `baja:NullConverter` (no-op) +
+  модульные. Получить инстанс: `Sys.getType(spec).getInstance()` →
+  `(BConverter)`.
+- **Реестра конвертеров для пары типов в публичном baja нет** — Workbench
+  использует agent-registry; поэтому авто-подбор отложен/не делается,
+  `converterType` указывается явно (это и было решением Q6 ещё в v0.5.1).
+- **`LinkCheck`** — финальный класс, только `isValid()` /
+  `getInvalidReason()`; не перечисляет доступные конверсии. Нет
+  `isValidWithConversion()`. Поэтому checkLink при наличии converterType
+  просто bypass'ится, валидность решается `BConversionLink` на add()/
+  активации.
+
+### Branch state
+
+- `v0.5.3-link-convert` — unmerged, off `main` (`7524e90`).
+- `main` — `7524e90` (v0.5.2 merge).
+- Метки `v0.5-user-context`/`v0.5.1-write-tools`/`v0.5.2-write-tools-polish`
+  — оставлены.
 
 ---
 
