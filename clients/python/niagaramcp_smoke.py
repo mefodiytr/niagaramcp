@@ -877,45 +877,62 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
     ok(f"fixture {fixture_ord}")
     p += 1
 
-    # --- Step 27: setSlot displayName (happy path) ---
-    step(27, "setSlot displayName on fixture")
+    # --- Step 27: setSlot on a dynamic baja:String prop of the fixture ---
+    # A bare baja:Folder has no settable scalar slot, so first add one
+    # (createComponent accepts any BValue type, not only BComponents).
+    step(27, "add a baja:String prop to the fixture, then setSlot it")
     status, _, body = user_client.tools_call(
-        "setSlot",
-        {"ord": fixture_ord, "slotName": "displayName",
-         "value": "Smoke Test Folder v0.5.1"},
+        "createComponent",
+        {"parentOrd": fixture_ord, "type": "baja:String", "name": "note"},
         request_id=2603)
     j = parse_json(body) or {}
-    if "error" in j:
-        e = j["error"]
-        fail(f"setSlot failed: {e.get('code')} {e.get('message')}; data={e.get('data')}")
+    res = j.get("result") or {}
+    if "error" in j or res.get("isError"):
+        fail(f"could not add String prop to fixture: {j.get('result') or j.get('error')}")
         f += 1
     else:
-        sc = j.get("result", {}).get("structuredContent", {})
-        if sc.get("newValue") == "Smoke Test Folder v0.5.1":
-            ok(f"newValue set; previousValue={sc.get('previousValue')!r}; type={sc.get('type')}")
-            p += 1
-        else:
-            fail(f"unexpected setSlot result: {j.get('result')}")
+        status, _, body = user_client.tools_call(
+            "setSlot",
+            {"ord": fixture_ord, "slotName": "note", "value": "hello v0.5.1"},
+            request_id=2604)
+        j = parse_json(body) or {}
+        if "error" in j:
+            e = j["error"]
+            fail(f"setSlot failed: {e.get('code')} {e.get('message')}; data={e.get('data')}")
             f += 1
+        else:
+            sc = j.get("result", {}).get("structuredContent", {})
+            if sc.get("newValue") == "hello v0.5.1":
+                ok(f"newValue set; previousValue={sc.get('previousValue')!r}; type={sc.get('type')}")
+                p += 1
+            else:
+                fail(f"unexpected setSlot result: {j.get('result')}")
+                f += 1
 
-    # --- Step 28: invokeAction with bogus name (error path) ---
-    step(28, "invokeAction with bogus actionName → expect -32014")
+    # --- Step 28: invokeAction with bogus name → tool error, errorCode -32014 ---
+    # MCP reports tool failures via isError content (not a JSON-RPC error);
+    # niagaramcp carries the RpcException code on result.errorCode (v0.5.1).
+    step(28, "invokeAction with bogus actionName → expect tool error errorCode=-32014")
     status, _, body = user_client.tools_call(
         "invokeAction",
         {"ord": fixture_ord, "actionName": "nonexistentAction_xyzzy"},
-        request_id=2604)
+        request_id=2605)
     j = parse_json(body) or {}
-    if j.get("error", {}).get("code") == -32014:
-        ok(f"got expected -32014 ERR_ACTION_NOT_FOUND")
+    res = j.get("result") or {}
+    if res.get("isError") and res.get("errorCode") == -32014:
+        ok("got expected -32014 ERR_ACTION_NOT_FOUND (isError content)")
+        p += 1
+    elif j.get("error", {}).get("code") == -32014:
+        ok("got expected -32014 ERR_ACTION_NOT_FOUND (json-rpc error)")
         p += 1
     else:
-        fail(f"expected -32014; got {j.get('error') or j.get('result')}")
+        fail(f"expected errorCode -32014; got {j.get('result') or j.get('error')}")
         f += 1
 
     # --- Step 29: commitStation (happy path) ---
     step(29, "commitStation")
     status, _, body = user_client.tools_call(
-        "commitStation", {}, request_id=2605)
+        "commitStation", {}, request_id=2606)
     j = parse_json(body) or {}
     if "error" in j:
         e = j["error"]
@@ -934,7 +951,7 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
     # --- Step 30: removeComponent dryRun (default true) ---
     step(30, "removeComponent dryRun preview")
     status, _, body = user_client.tools_call(
-        "removeComponent", {"ord": fixture_ord}, request_id=2606)
+        "removeComponent", {"ord": fixture_ord}, request_id=2607)
     j = parse_json(body) or {}
     if "error" in j:
         e = j["error"]
@@ -954,7 +971,7 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
     status, _, body = user_client.tools_call(
         "removeComponent",
         {"ord": fixture_ord, "dryRun": False},
-        request_id=2607)
+        request_id=2608)
     j = parse_json(body) or {}
     if "error" in j:
         e = j["error"]

@@ -368,8 +368,19 @@ public final class McpProtocol {
 
     String text;
     boolean isError = false;
+    int errorCode = 0;            // 0 = no structured code
+    JSONObject errorData = null;
     try {
       text = t.call(args);
+    } catch (RpcException e) {
+      // Tools throw RpcException for their domain errors (e.g. -32014
+      // ERR_ACTION_NOT_FOUND). MCP reports tool failures via isError
+      // content, not a JSON-RPC error — so carry the code/data forward
+      // as extension fields on the result rather than dropping them.
+      text = e.getMessage();
+      isError = true;
+      errorCode = e.code;
+      errorData = e.data;
     } catch (Exception e) {
       text = "Error: " + e.getMessage();
       isError = true;
@@ -401,6 +412,13 @@ public final class McpProtocol {
       }
     }
     result.put("isError", isError);
+    // v0.5.1: when the tool error was a structured RpcException, expose its
+    // code (and any data payload) so clients can branch programmatically on
+    // -32013/-32014/-32015/-32016/... instead of string-matching the text.
+    if (isError && errorCode != 0) {
+      result.put("errorCode", errorCode);
+      if (errorData != null) result.put("errorData", errorData);
+    }
     return result;
   }
 
