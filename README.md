@@ -380,11 +380,26 @@ the `createComponent` reference shape.
 
 `+6` steps (26-31) under the existing v0.5 pre-flight (test BUser
 + `enableTestSetup=true`): own throwaway fixture via
-createComponent → setSlot → invokeAction error path →
+createComponent → add a `baja:String` prop + setSlot it →
+invokeAction error path (asserts `result.errorCode == -32014`) →
 commitStation → removeComponent dryRun preview → removeComponent
 actual cleanup. `--skip-v051` opts out. addExtension / linkSlots
 / unlinkSlots e2e fixtures need station-specific setup; deferred
-to v0.5.2.
+to v0.5.2. **33 / 33 green against a live 4.15.3.28 station.**
+
+### Post-smoke hardening
+
+- **ord arguments** — write tools resolve ords against the running
+  station (`BOrd.make(s).get(Sys.getStation())`), so a bare relative
+  `slot:/Drivers/Foo` works as well as a fully-qualified
+  `station:|slot:/Drivers/Foo`. Result ords are always returned
+  fully-qualified.
+- **`result.errorCode` / `result.errorData`** — a tool's `RpcException`
+  (`-32013`..`-32016`, `-32006`, ...) is still reported MCP-style via
+  `isError` content, but the structured code/data are now carried on the
+  `CallToolResult` so clients can branch on them without parsing the
+  message text. Generic exceptions keep the `Error: <msg>` text and no
+  code.
 
 ---
 

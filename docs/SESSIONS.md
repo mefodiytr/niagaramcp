@@ -95,7 +95,7 @@ identical, hashes change.
 - `v0.5-user-context` — unmerged (under review).
 - `main` — at v0.4.1 merge.
 - Stack: main (v0.4.1) → v0.5-user-context (11 commits) →
-  v0.5.1-write-tools (8 commits).
+  v0.5.1-write-tools (8 + 5 fix commits).
 
 ### Surprises
 
@@ -105,6 +105,42 @@ identical, hashes change.
   архитектурной работы.
 - 7-tool batch shipped в одном branch'е без блокеров — recon из
   v0.5 design pass покрыл API surface'ы заранее.
+
+### Real-station smoke bring-up (2026-05-11)
+
+Прогон smoke против живой 4.15.3.28 — 5 fix-коммитов поверх
+`v0.5.1-write-tools`, итог **33 passed / 0 failed**.
+
+- **`mcp:tokenHash` персистится без cx** — `BUser.tags().set(Tag)`
+  без Context отрабатывает; user-Bearer auth заработала сразу после
+  пересборки jar'а (первые 401 были из-за того, что smoke не
+  перехватывал `Mcp-Session-Id` из ответа `initialize()` на v0.5/v0.5.1
+  путях — fix `eca9523`/`4c879b7`). Диаг-поля в `setupTestUser`
+  (`tagsSetReturned`/`readbackHash`/`readbackMatches`) добавлены для
+  этого расследования и оставлены.
+- **`slot:/...` ord на servlet-потоке резолвится от локального хоста.**
+  `createComponent` возвращал `slot:/Drivers/Foo` (через
+  `getSlotPath()`), и `BOrd.make("slot:/...").get()` в servlet-хендлере
+  резолвил относительный путь от неявной базы потока — локального хоста
+  → `ord not resolvable: localhost`. Декомпиляция baja:
+  `getSlotPathOrd()` == `BOrd.make(getSlotPath())` — тоже относительный,
+  так что первый fix (`4612c06`) не помог. Решение — хелпер
+  `tools.Ords`: `resolve(s)` = `BOrd.make(s).get(Sys.getStation())`
+  (относительный `slot:/...` от корня станции, абсолютные ords базу
+  игнорируют) + `stationOrd(c)` = `"station:|" + c.getSlotPath()` для
+  результатов. Прошито во все write-тулзы (`cadf51c`).
+- **Коды ошибок тулзов терялись.** Tool, бросающий `RpcException`
+  (-32014 и т.д.), отдавался как `{isError:true, content:[{text:"Error:
+  ..."}]}` — код не доезжал до клиента (определять -32013..-32016 было
+  незачем). `McpProtocol.callTool` теперь ловит `RpcException` отдельно
+  и кладёт код/data в `result.errorCode`/`result.errorData` (`271e8e6`).
+- **Smoke step 27 был невалиден** — `setSlot("displayName")` на голом
+  `baja:Folder`, у которого нет настраиваемого скалярного слота (тул
+  правильно отвечал `No such slot`). Теперь: `createComponent`
+  динамического `baja:String`-свойства `note` на фикстуре (тул
+  принимает любой `BValue`, не только компоненты), потом `setSlot`.
+- **`enableTestSetup=true` на станции** — это флаг для smoke/CI; снять
+  обратно в `false` после прогонов.
 
 ---
 

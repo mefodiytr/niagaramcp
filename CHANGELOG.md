@@ -77,6 +77,40 @@ ToolAnnotations.MUTATION (or DESTRUCTIVE), audited via
   commitStation / removeComponent dryRun + actual cleanup.
   `--skip-v051` flag added.
 
+### Hardening (after first real-station smoke)
+
+All 33 smoke steps green against a live 4.15.3.28 station. Fixes that
+landed during that bring-up:
+
+- **`tools.Ords` helper** — write tools now resolve ords via
+  `Ords.resolve(s)` = `BOrd.make(s).get(Sys.getStation())` so a bare
+  relative `slot:/...` body resolves against the running station rather
+  than the servlet thread's implicit base (the local host — which
+  produced the cryptic `ord not resolvable: localhost`). Absolute ords
+  (`station:|...`, `local:|...`, `h:...`) ignore the base, so this is
+  transparent for them — and clients may now pass either form.
+- **Fully-qualified result ords** — `createComponent` / `addExtension` /
+  `linkSlots` return the new slot's ord as `Ords.stationOrd(c)` =
+  `"station:|" + comp.getSlotPath()`, not the relative `slot:/...` that
+  `getSlotPath()`/`getSlotPathOrd()` stringify to, so a follow-up tool
+  call can resolve it without the caller prefixing it.
+  `removeComponent.sampleSourceOrds` and `unlinkSlots` source/sink ords
+  likewise.
+- **`result.errorCode` / `result.errorData`** — when a tool throws an
+  `RpcException` (its domain errors — -32013..-32016, -32006, ...) the
+  failure is still reported MCP-style via `isError` content, but the
+  structured code (int) and data (object) are now carried on the
+  `CallToolResult` so clients can branch programmatically instead of
+  string-matching the message text. Generic (non-`RpcException`)
+  failures keep the `Error: <msg>` text and carry no code, as before.
+  `structuredContent` auto-promotion is still skipped on `isError`.
+- Smoke: step 27 now adds a `baja:String` dynamic prop to the fixture
+  before `setSlot`-ing it (a bare `baja:Folder` has no settable scalar
+  slot — the old `displayName` target was never valid); step 28 asserts
+  `result.errorCode == -32014` (was a JSON-RPC error code); on any
+  tool-error the assert messages print the full `result` (isError +
+  content) instead of an empty `structuredContent` dict.
+
 ### Tools count
 
 `tools/list` 38 → **45** (+7). `category: "write"` row in tools

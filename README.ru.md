@@ -366,11 +366,25 @@ additions по `createComponent` reference shape.
 ### Smoke
 
 `+6` шагов (26-31) под существующим v0.5 pre-flight: throwaway
-fixture через createComponent → setSlot → invokeAction error path
-→ commitStation → removeComponent dryRun preview → removeComponent
-actual cleanup. `--skip-v051` opts out. addExtension / linkSlots /
-unlinkSlots e2e fixtures отложены в v0.5.2 (нужен station-specific
-helper).
+fixture через createComponent → добавить `baja:String`-проп +
+setSlot его → invokeAction error path (проверяет
+`result.errorCode == -32014`) → commitStation → removeComponent
+dryRun preview → removeComponent actual cleanup. `--skip-v051`
+opts out. addExtension / linkSlots / unlinkSlots e2e fixtures
+отложены в v0.5.2 (нужен station-specific helper).
+**33 / 33 green против живой станции 4.15.3.28.**
+
+### Post-smoke hardening
+
+- **ord-аргументы** — write-тулзы резолвят ords от корня станции
+  (`BOrd.make(s).get(Sys.getStation())`): относительный
+  `slot:/Drivers/Foo` работает наравне с полным
+  `station:|slot:/Drivers/Foo`. Ords в результатах всегда полные.
+- **`result.errorCode` / `result.errorData`** — `RpcException` тула
+  (`-32013`..`-32016`, `-32006`, ...) по-прежнему отдаётся MCP-стайл
+  через `isError`-контент, но код/data теперь лежат на `CallToolResult`
+  — клиент ветвится по ним без парсинга текста. Generic-исключения —
+  текст `Error: <msg>` без кода.
 
 ---
 
