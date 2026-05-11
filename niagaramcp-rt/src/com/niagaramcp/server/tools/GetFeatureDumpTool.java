@@ -64,7 +64,7 @@ public final class GetFeatureDumpTool implements Tool {
     {"-32011", "user-Context required (bearer is the service identity, not a BUser)"},
     {"-32013", "component has inbound links (removeComponent, force=false)"},
     {"-32014", "action not found (invokeAction)"},
-    {"-32015", "extension not applicable (reserved; v0.5.2 pre-check)"},
+    {"-32015", "extension not applicable (addExtension isChildLegal/isParentLegal pre-check)"},
     {"-32016", "link type mismatch (linkSlots, Niagara LinkCheck invalid)"}
   };
 

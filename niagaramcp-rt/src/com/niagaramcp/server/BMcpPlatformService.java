@@ -56,6 +56,7 @@ import com.niagaramcp.server.tools.InvokeActionTool;
 import com.niagaramcp.server.tools.LinkSlotsTool;
 import com.niagaramcp.server.tools.RemoveComponentTool;
 import com.niagaramcp.server.tools.SetSlotTool;
+import com.niagaramcp.server.tools.ClearSlotTool;
 import com.niagaramcp.server.tools.SetupTestUserTool;
 import com.niagaramcp.server.tools.UnlinkSlotsTool;
 import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
@@ -367,6 +368,8 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new LinkSlotsTool());
     r.register((Tool) new UnlinkSlotsTool());
     r.register((Tool) new CommitStationTool());
+    // v0.5.2: write-tool polish
+    r.register((Tool) new ClearSlotTool());
     REGISTRY = r;
 
     // v0.3 — Resources

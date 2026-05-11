@@ -319,7 +319,7 @@ clients can group tools in their UI:
 |---|---|
 | `transport-test` | `echo` |
 | `read` | `listChildren`, `readPoint`, `bqlQuery` |
-| `write` | `writePoint`, `createComponent` *(v0.5)*, **`removeComponent`**, **`setSlot`**, **`invokeAction`**, **`addExtension`**, **`linkSlots`**, **`unlinkSlots`**, **`commitStation`** *(all v0.5.1, requires user-Context)* |
+| `write` | `writePoint`, `createComponent` *(v0.5)*, `removeComponent`, `setSlot`, `invokeAction`, `addExtension`, `linkSlots`, `unlinkSlots`, `commitStation` *(v0.5.1)*, **`clearSlot`** *(v0.5.2)* — all but `writePoint` require user-Context |
 | `walkthrough-read` | `getOverview`, `inspectComponent`, `findComponentsByType`, `getSlots` |
 | `walkthrough-write` | 10 walkthrough writers |
 | `management` | `getKnowledgeSummary`, `findUnmappedComponents`, `exportKnowledge`, `importKnowledge`, `reloadKnowledge` |
@@ -345,6 +345,34 @@ informational only.
 12 unused JSON utility classes (`XML`, `CDL`, `Cookie`, `HTTP`, etc.)
 removed from the embedded `com.niagaramcp.json` package. Jar size
 243 KB → 213 KB (−30 KB / −12%).
+
+---
+
+## Write-tool polish (v0.5.2)
+
+Small follow-ups to the M1 set — one new tool, one new arg form, a
+pre-check, and a refactor. No new infrastructure.
+
+- **`clearSlot`** (`write`, `requiresUserContext`, `MUTATION`) — resets a
+  Property slot to its declared default (`Property.getDefaultValue()`)
+  under the user-Context gateway. Works for any Property slot type, not
+  just BSimple (no JSON value to coerce). Args `{ord, slotName}`; result
+  `{ord, slotName, previousValue, defaultValue, type, changed}`.
+- **`unlinkSlots` now also accepts `{sinkOrd, linkName}`** alongside
+  `{linkOrd}` — mirrors how `linkSlots` returns its result and how a link
+  reads in the nav tree (a named slot on the sink).
+- **`addExtension` applicability pre-check** — runs Niagara's own
+  `isChildLegal` / `isParentLegal` predicates; an incompatible
+  parent/extension pair is now refused up front with **`-32015
+  ERR_EXTENSION_NOT_APPLICABLE`** (`data{parentOrd, parentType,
+  extensionType, reason}`) rather than a generic `-32603` at `add()` time.
+  This activates the `-32015` code declared in v0.5.1.
+- **`BValueCoercer`** — the JSON↔BSimple coercion shared by `setSlot` and
+  `invokeAction` is now one helper (no behavior change). Also fixed
+  `linkSlots`/`unlinkSlots` emitting relative `slot:/...` link ords
+  (a `BLink` is a `BRelation`, not a `BComponent`).
+
+`tools/list` 45 → **46**. Smoke `+1` step (28, `clearSlot`); steps 26-32.
 
 ---
 

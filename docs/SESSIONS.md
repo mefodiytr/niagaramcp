@@ -1,7 +1,68 @@
-# Session notes: v0.2.0 → v0.5.1 release work
+# Session notes: v0.2.0 → v0.5.2 release work
 
-**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1 → v0.5 → v0.5.1
+**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1 → v0.5 → v0.5.1 → v0.5.2
 **Время:** несколько сессий, май 2026.
+
+---
+
+## v0.5.2 — write-tool polish (2026-05-11)
+
+**Branch:** `v0.5.2-write-tools-polish` — off **post-merge `main`**
+(v0.5 + v0.5.1 смержены в `3189c1d`; v0.5.2 — первая ветка от чистого
+main, не стэк). **Commits:** 4 (a/b/d/e) + docs.
+**Build:** per-commit `:compileJava` green.
+
+### Что добавлено / изменено
+
+- **`BValueCoercer`** (item a) — вынес дублирующуюся JSON↔BSimple
+  coercion из `SetSlotTool`/`InvokeActionTool` в один package-private
+  хелпер (`coerce` / `toJsonScalar` / `typeSpec` / `isSupported` +
+  `UnsupportedTypeException`). Без изменения поведения. Оба тула теперь
+  делегируют; их приватные копии + bespoke-исключения удалены.
+- **`clearSlot`** (item d) — новый `write`-тул: ресет Property-слота в
+  `prop.getDefaultValue()` под user-Context gateway. Работает для любого
+  Property-типа (не только BSimple — coerce не нужен). Result:
+  `{ord, slotName, previousValue, defaultValue, type, changed}`.
+  `tools/list` 45 → 46.
+- **`unlinkSlots` форма `{sinkOrd, linkName}`** (item e) — рядом с
+  `{linkOrd}`. Валидация "linkOrd XOR (sinkOrd & linkName)" в `call()`.
+  Заодно фикс латентного бага: `BLink` — это `BRelation`, не
+  `BComponent`, поэтому у него нет `getSlotPath()`; `linkSlots`/
+  `unlinkSlots` теперь строят link-ord из ord'а sink'а + имени слота
+  (раньше падало в else-ветку `getSlotPathOrd().toString()` → относительный
+  `slot:/...`, тот же класс бага, что чинил `cadf51c`).
+- **`addExtension` pre-check** (item b) — `parent.isChildLegal(ext)` +
+  `ext.isParentLegal(parent)` перед add; несовместимая пара → `-32015`
+  ERR_EXTENSION_NOT_APPLICABLE с `data{parentOrd, parentType,
+  extensionType, reason}` вместо generic `-32603`. Активирует
+  declared-but-dormant `-32015`. Дефолты возвращают true → unconstrained
+  parents не затронуты.
+- Smoke: новый шаг 28 `clearSlot` (ресетит `note` из шага 27, проверяет
+  `changed`); шаги перенумерованы 26-32; баннер обновлён.
+- `getFeatureDump` error-code таблица: `-32015` теперь active.
+
+### Что обнаружилось при разработке
+
+- **`getSlotPathOrd()` == `BOrd.make(getSlotPath())`** (декомпиляция baja)
+  — стрингуется в относительный `slot:/...`. Поэтому канонический ord для
+  результатов — `"station:|" + getSlotPath()` (`Ords.stationOrd`,
+  введён в v0.5.1 post-smoke).
+- **`BLink extends BRelation`** (не `BComponent`). `BRelation` —
+  `BComplex`, но не `BComponent` → нет `getSlotPath()`. Source/sink
+  компоненты у линка — `BComponent` (`getSourceComponent()` и т.д.), а
+  сам линк — нет.
+- **`BComponent.isChildLegal`/`isParentLegal`** дефолт = `return true`;
+  constrained-сабклассы (`BHistoryExt` и т.п.) переопределяют. Это и есть
+  то, что `add()`'s `checkAdd` консультирует — годится для pre-check'а
+  без recon'а agent-registry.
+- **`Property.getDefaultValue()`** — есть, отдаёт declared default слота
+  (для динамического свойства — значение, с которым его добавили).
+
+### Branch state
+
+- `v0.5.2-write-tools-polish` — unmerged, off `main` (665f06c).
+- `main` — at `3189c1d` (v0.5+v0.5.1 merge) + `665f06c` (gitignore chore).
+- Метки `v0.5-user-context` / `v0.5.1-write-tools` — оставлены.
 
 ---
 

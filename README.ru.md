@@ -335,6 +335,34 @@ JSON-ответ.
 
 ---
 
+## Write-tool polish (v0.5.2)
+
+Небольшие follow-up'ы к M1-набору — один новый тул, новая форма
+аргументов, pre-check и рефакторинг. Без новой инфраструктуры.
+
+- **`clearSlot`** (`write`, `requiresUserContext`, `MUTATION`) — ресет
+  Property-слота в declared default (`Property.getDefaultValue()`) под
+  user-Context gateway. Работает для любого Property-типа, не только
+  BSimple (нечего coerce'ить). Args `{ord, slotName}`; result
+  `{ord, slotName, previousValue, defaultValue, type, changed}`.
+- **`unlinkSlots` теперь принимает и `{sinkOrd, linkName}`** рядом с
+  `{linkOrd}` — отражает то, как `linkSlots` возвращает результат и как
+  линк читается в nav-дереве (именованный слот на sink'е).
+- **`addExtension` pre-check применимости** — гоняет родные предикаты
+  Niagara `isChildLegal` / `isParentLegal`; несовместимая пара
+  parent/extension теперь отбивается сразу с **`-32015
+  ERR_EXTENSION_NOT_APPLICABLE`** (`data{parentOrd, parentType,
+  extensionType, reason}`) вместо generic `-32603` на `add()`. Активирует
+  `-32015`, объявленный в v0.5.1.
+- **`BValueCoercer`** — JSON↔BSimple coercion, общая для `setSlot` и
+  `invokeAction`, вынесена в один хелпер (без изменения поведения).
+  Заодно фикс относительных `slot:/...` link-ord'ов в
+  `linkSlots`/`unlinkSlots` (`BLink` — это `BRelation`, не `BComponent`).
+
+`tools/list` 45 → **46**. Smoke `+1` шаг (28, `clearSlot`); шаги 26-32.
+
+---
+
 ## M1 write-tool tail (v0.5.1)
 
 Stacked-on-v0.5 patch. Закрывает M1 write-tool set: 6 новых tools
