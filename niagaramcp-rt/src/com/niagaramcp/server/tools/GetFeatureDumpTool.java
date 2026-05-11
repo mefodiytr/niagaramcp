@@ -43,8 +43,12 @@ public final class GetFeatureDumpTool implements Tool {
   };
 
   /**
-   * JSON-RPC impl-defined error codes (-32001..-32009) — fixed by spec,
-   * enumerated here so clients can self-document without separate docs.
+   * Impl-defined error codes (-32001..-32016) — enumerated here so clients
+   * can self-document without separate docs. -32001..-32011 surface as
+   * JSON-RPC {@code error} objects (pre-dispatch / protocol failures);
+   * tool-domain codes (-32006, -32013..-32016, ...) thrown from inside a
+   * tool are reported via {@code result.isError} content with the code on
+   * {@code result.errorCode} (see v0.5.1 protocol notes).
    */
   private static final String[][] ERROR_CODES = new String[][] {
     {"-32001", "session not found"},
@@ -55,7 +59,13 @@ public final class GetFeatureDumpTool implements Tool {
     {"-32006", "ord not resolvable"},
     {"-32007", "history extension not present"},
     {"-32008", "alarm service not available"},
-    {"-32009", "transport disabled"}
+    {"-32009", "transport disabled"},
+    {"-32010", "permission denied (user lacks Niagara permission)"},
+    {"-32011", "user-Context required (bearer is the service identity, not a BUser)"},
+    {"-32013", "component has inbound links (removeComponent, force=false)"},
+    {"-32014", "action not found (invokeAction)"},
+    {"-32015", "extension not applicable (reserved; v0.5.2 pre-check)"},
+    {"-32016", "link type mismatch (linkSlots, Niagara LinkCheck invalid)"}
   };
 
   @Override public String name()        { return "getFeatureDump"; }

@@ -319,14 +319,14 @@ clients can group tools in their UI:
 |---|---|
 | `transport-test` | `echo` |
 | `read` | `listChildren`, `readPoint`, `bqlQuery` |
-| `write` | `writePoint` |
+| `write` | `writePoint`, `createComponent` *(v0.5)*, **`removeComponent`**, **`setSlot`**, **`invokeAction`**, **`addExtension`**, **`linkSlots`**, **`unlinkSlots`**, **`commitStation`** *(all v0.5.1, requires user-Context)* |
 | `walkthrough-read` | `getOverview`, `inspectComponent`, `findComponentsByType`, `getSlots` |
 | `walkthrough-write` | 10 walkthrough writers |
 | `management` | `getKnowledgeSummary`, `findUnmappedComponents`, `exportKnowledge`, `importKnowledge`, `reloadKnowledge` |
 | `search` | `findEquipment`, `findInSpace`, `findPoints` |
 | `history` | `readHistory` |
 | `alarms` | `getActiveAlarms`, `getAlarmHistory` |
-| `diagnostic` | `getServerInfo`, `probeOrd`, `checkKnowledgeIntegrity`, `getServiceHealth`, `getDiagnosticDump`, **`getFeatureDump`** |
+| `diagnostic` | `getServerInfo`, `probeOrd`, `checkKnowledgeIntegrity`, `getServiceHealth`, `getDiagnosticDump`, `getFeatureDump`, **`setupTestUser`** *(v0.5, gated by `enableTestSetup`)* |
 
 ### `getDiagnosticDump` tool (35th)
 
@@ -345,6 +345,166 @@ informational only.
 12 unused JSON utility classes (`XML`, `CDL`, `Cookie`, `HTTP`, etc.)
 removed from the embedded `com.niagaramcp.json` package. Jar size
 243 KB → 213 KB (−30 KB / −12%).
+
+---
+
+## M1 write-tool tail (v0.5.1)
+
+Stacked-on-v0.5 patch. Closes the M1 write-tool set with 6 more
+tools + commitStation, all under the v0.5 user-Context gateway,
+all audited. No new infrastructure — pure tool additions following
+the `createComponent` reference shape.
+
+### 7 new tools (all `category: "write"`, `requiresUserContext: true`)
+
+| Tool | annotations | Purpose |
+|---|---|---|
+| `removeComponent` | `DESTRUCTIVE` | `parent.remove(slot, cx)`. Default `dryRun=true` + inbound-link safety check (refuse if `target.getLinks()` non-empty unless `force=true`). Outbound-link detection is queued for v0.6 (needs station walk). |
+| `setSlot` | `MUTATION` | Type-coerced `BComplex.set(prop, value, cx)` for BSimple slot types (BString/BBoolean/BInteger/BLong/BFloat/BDouble). Complex types refuse with -32602 + hint. |
+| `invokeAction` | `MUTATION` | `BComponent.invoke(Action, BValue, cx)` with parameter coercion mirroring setSlot. Returns `{returnValue, returnType, durationMs}`. |
+| `addExtension` | `MUTATION` | `parent.add(name, ext, cx)` for extension types. v0.5.1 doesn't pre-check applicability; Niagara's add()-time validation surfaces incompatible pairs as -32603 (will become -32015 after v0.5.2 pre-check). |
+| `linkSlots` | `MUTATION` | `sink.makeLink(...) + sink.add(linkName, link, cx)` after Niagara's `checkLink()` predicate. Type mismatch → -32016 with reason. Auto-pick converter (`convert: true`) deferred to v0.5.2. |
+| `unlinkSlots` | `DESTRUCTIVE` | `sink.remove(linkProperty, cx)`. Refuses non-link ords (use removeComponent). Captures wire info (source/sink ord + slots) into result for audit / manual undo. |
+| `commitStation` | `MUTATION` | `BStation.doSave(Context)` under user-Context. Use after a batch when ack-without-persistence (~30s auto-save delay) is unacceptable. |
+
+### 4 new JSON-RPC error codes
+
+| Code | Symbol | Trigger |
+|---|---|---|
+| `-32013` | `ERR_COMPONENT_HAS_INBOUND_LINKS` | `removeComponent` refused; `data{ord, inboundLinkCount, sampleSourceOrds[≤5]}`. |
+| `-32014` | `ERR_ACTION_NOT_FOUND` | `invokeAction` action name not on the target. |
+| `-32015` | `ERR_EXTENSION_NOT_APPLICABLE` | Reserved; activated when v0.5.2 adds pre-check. |
+| `-32016` | `ERR_LINK_TYPE_MISMATCH` | `linkSlots` Niagara `LinkCheck` invalid; `data{sourceOrd, sourceSlot, sinkOrd, sinkSlot, reason}`. |
+
+### Smoke
+
+`+6` steps (26-31) under the existing v0.5 pre-flight (test BUser
++ `enableTestSetup=true`): own throwaway fixture via
+createComponent → add a `baja:String` prop + setSlot it →
+invokeAction error path (asserts `result.errorCode == -32014`) →
+commitStation → removeComponent dryRun preview → removeComponent
+actual cleanup. `--skip-v051` opts out. addExtension / linkSlots
+/ unlinkSlots e2e fixtures need station-specific setup; deferred
+to v0.5.2. **33 / 33 green against a live 4.15.3.28 station.**
+
+### Post-smoke hardening
+
+- **ord arguments** — write tools resolve ords against the running
+  station (`BOrd.make(s).get(Sys.getStation())`), so a bare relative
+  `slot:/Drivers/Foo` works as well as a fully-qualified
+  `station:|slot:/Drivers/Foo`. Result ords are always returned
+  fully-qualified.
+- **`result.errorCode` / `result.errorData`** — a tool's `RpcException`
+  (`-32013`..`-32016`, `-32006`, ...) is still reported MCP-style via
+  `isError` content, but the structured code/data are now carried on the
+  `CallToolResult` so clients can branch on them without parsing the
+  message text. Generic exceptions keep the `Error: <msg>` text and no
+  code.
+
+---
+
+## User-Context gateway & per-user audit (v0.5)
+
+Foundation release for write-tools that mutate the station
+component tree under the calling user's Niagara permissions
+instead of the niagaramcp service identity. No breaking changes —
+all 36 existing tools work exactly as before; the new pipeline
+activates only when a tool sets `requiresUserContext=true` (only
+`createComponent` in v0.5; the M1 set lands in v0.5.x).
+
+### How user identity works
+
+- Operator pre-creates a `BUser` via Workbench (UserService) and
+  grants it the Niagara permissions the tool will need.
+- A per-user MCP token is bound to the BUser via the
+  `mcp:tokenHash` tag (salted SHA-256 against the per-service
+  `tokenSalt` property, generated lazily on first start).
+- On every request: `McpServlet` authenticates the bearer EITHER
+  against the legacy `apiToken` (read-only service identity for
+  monitoring) OR via `BearerResolver` walking
+  `BUserService.getUsers()` with constant-time hash compare.
+- Walks every user unconditionally — no early-exit on match — so
+  total walk time doesn't leak which usernames are MCP-enrolled.
+- Resolved BUser flows through `CallContext` to the tool body,
+  which feeds it into `UserContextGateway.run(...)`. The gateway
+  builds `BasicContext(user)`, runs the work lambda, wraps any
+  `PermissionException` into `-32010` with rich
+  `data{user, ord, operation, tool, detail}`, and emits one
+  audit record.
+
+### Per-user audit
+
+- **JSONL primary**: every gateway call writes one JSON line to
+  `<userHome>/niagaramcp/niagaramcp.audit.log`:
+  `{ts, user, sessionId, tool, ord, action, args, resultOk,
+  durationMs, errorCode, errorMessage}`. Args are passed through
+  a redactor (default key blacklist:
+  `password|secret|token|apikey|passcode|pwd|credential`) and
+  long string values are truncated at 256 chars with a `…+N`
+  suffix.
+- **BAuditHistoryService secondary**: best-effort, **reflection-only**.
+  Lookup at service start; method handle cached. No compile-time
+  dependency on `history-rt` so lightweight JACE installs without
+  that module load just fine. When the service is present, our
+  records show in Workbench AuditView with a 6-field mapping
+  (operation = action, target = ord, slotName = tool, value =
+  "ok"|"FAIL: …", userName = user).
+
+### MCP tool annotations
+
+Per MCP 2025-06-18 §6.1, every `tools/list` row now carries
+`annotations: {readOnlyHint, destructiveHint, idempotentHint,
+openWorldHint}` plus a niagaramcp extension `requiresUserContext`.
+MCP-aware clients (Claude Desktop, Cursor, MCP Inspector) gate
+user-visible warnings on these — e.g. asking for explicit
+confirmation before invoking `destructiveHint=true`. Existing 36
+tools inherit `READ_ONLY` defaults — zero touch.
+
+### `createComponent` tool (37th)
+
+Reference write-tool for the M1 set. Adds a new `BComponent` of a
+given Type as a child of an existing parent, under the calling
+user's permissions.
+
+```
+{
+  "parentOrd":    "station:|slot:/Drivers",
+  "type":         "baja:Folder",
+  "name":         "BasementHVAC",
+  "nameStrategy": "fail" | "suffix"     // optional, default "fail"
+}
+```
+
+Returns (in both `content[0].text` AND `structuredContent`):
+`{ord, displayName, requestedName, resolvedName}`.
+
+Errors: -32602 (missing arg / collision under "fail"), -32006
+(parentOrd not resolvable), -32005 (type doesn't load), -32010
+(permission denied), -32011 (bearer is service identity, not
+BUser).
+
+### Auto-promote `structuredContent`
+
+McpProtocol now auto-promotes JSON-shaped tool results to MCP
+`result.structuredContent` per spec §5.4. Pure addition: legacy
+clients keep reading `content[0].text`, modern clients prefer the
+typed structuredContent. Affects the entire 36-tool catalog at no
+per-tool cost; no opt-in needed.
+
+### `setupTestUser` tool (38th, test-only)
+
+Gated by `BMcpPlatformService.enableTestSetup` (default `false`).
+When enabled, lets the smoke client bind a freshly-generated bearer
+to a pre-created BUser's `mcp:tokenHash` tag, so the v0.5 e2e smoke
+step (createComponent under user-Bearer) runs without bog-fragment
+provisioning. Production deployments leave the flag off.
+
+### 2 new error codes
+
+| Code | Symbol | When it fires |
+|---|---|---|
+| `-32010` | `ERR_PERMISSION_DENIED` | Niagara `PermissionException` from any mutating call inside a gateway-wrapped tool. `data{user, ord, operation, tool, detail}`. |
+| `-32011` | `ERR_USER_NOT_FOUND` | Tool with `requiresUserContext=true` invoked with a bearer that resolves to apiToken (service identity) instead of a BUser. `data{tool, requiresUserContext: true}`. |
 
 ---
 

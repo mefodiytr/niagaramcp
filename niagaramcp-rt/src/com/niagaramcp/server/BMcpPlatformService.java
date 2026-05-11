@@ -24,6 +24,11 @@ import javax.baja.sys.Context;
 import javax.baja.sys.Property;
 import javax.baja.sys.Sys;
 import javax.baja.sys.Type;
+import com.niagaramcp.server.audit.Audit;
+import com.niagaramcp.server.audit.BAuditHistoryServiceAdapter;
+import com.niagaramcp.server.audit.JsonlAuditWriter;
+import com.niagaramcp.server.auth.McpTags;
+import com.niagaramcp.server.auth.TokenHasher;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 import com.niagaramcp.server.prompts.QueryAlarmSummaryPrompt;
 import com.niagaramcp.server.prompts.QueryEquipmentStatePrompt;
@@ -43,7 +48,16 @@ import com.niagaramcp.server.tools.AssignPointToEquipmentTool;
 import com.niagaramcp.server.tools.BqlQueryTool;
 import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
 import com.niagaramcp.server.tools.CheckKnowledgeIntegrityTool;
+import com.niagaramcp.server.tools.CreateComponentTool;
 import com.niagaramcp.server.tools.CreateEquipmentTool;
+import com.niagaramcp.server.tools.AddExtensionTool;
+import com.niagaramcp.server.tools.CommitStationTool;
+import com.niagaramcp.server.tools.InvokeActionTool;
+import com.niagaramcp.server.tools.LinkSlotsTool;
+import com.niagaramcp.server.tools.RemoveComponentTool;
+import com.niagaramcp.server.tools.SetSlotTool;
+import com.niagaramcp.server.tools.SetupTestUserTool;
+import com.niagaramcp.server.tools.UnlinkSlotsTool;
 import com.niagaramcp.server.tools.CreateEquipmentTypeTool;
 import com.niagaramcp.server.tools.CreateSpaceTool;
 import com.niagaramcp.server.tools.CreateStandalonePointTool;
@@ -102,7 +116,18 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "toolCount",                type = "int",     defaultValue = "0", flags = 3),
   @NiagaraProperty(name = "resourceCount",            type = "int",     defaultValue = "0", flags = 3),
   @NiagaraProperty(name = "promptCount",              type = "int",     defaultValue = "0", flags = 3),
-  @NiagaraProperty(name = "sessionCount",             type = "int",     defaultValue = "0", flags = 3)
+  @NiagaraProperty(name = "sessionCount",             type = "int",     defaultValue = "0", flags = 3),
+  // v0.5: per-service salt for hashing user MCP tokens stored as
+  // mcp:tokenHash tags on BUsers. Generated once on first
+  // serviceStarted; persists across restarts via .bog. flags=3
+  // (SUMMARY+READONLY) — visible to operators for diagnostic purposes
+  // but never edited by hand (changing the salt invalidates ALL
+  // existing user tokens at once, requiring a full rotation).
+  @NiagaraProperty(name = "tokenSalt",                type = "String",  defaultValue = "\"\"", flags = 3),
+  // v0.5: gate for the test-only `setupTestUser` tool. Default false.
+  // When true, smoke client can bind a tokenHash tag to a pre-created
+  // BUser via setupTestUser; flip to false in production.
+  @NiagaraProperty(name = "enableTestSetup",          type = "boolean", defaultValue = "false")
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -200,6 +225,17 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public int getSessionCount() { return getInt(sessionCount); }
   public void setSessionCount(int v) { setInt(sessionCount, v, null); }
 
+  // v0.5 — per-service salt for token hashing. flags=3.
+  // Initial value "" → triggers lazy generation in serviceStarted().
+  public static final Property tokenSalt = newProperty(3, "", null);
+  public String getTokenSalt() { return getString(tokenSalt); }
+  public void setTokenSalt(String v) { setString(tokenSalt, v, null); }
+
+  // v0.5 — flag for test-only setupTestUser tool. Default false.
+  public static final Property enableTestSetup = newProperty(0, false, null);
+  public boolean getEnableTestSetup() { return getBoolean(enableTestSetup); }
+  public void setEnableTestSetup(boolean v) { setBoolean(enableTestSetup, v, null); }
+
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
 
@@ -232,6 +268,42 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     started();
     bcLog("serviceStarted");
     SERVICE_START_TIME_MS = System.currentTimeMillis();
+
+    // v0.5: lazy-generate per-service salt on first start.
+    // Persists in .bog from then on. Empty -> first ever start (or
+    // operator wiped the value); generate fresh.
+    if (getTokenSalt() == null || getTokenSalt().isEmpty()) {
+      String fresh = TokenHasher.generateSaltBase64();
+      setTokenSalt(fresh);
+      bcLog("generated initial tokenSalt (length=" + fresh.length() + ")");
+    }
+
+    // v0.5: best-effort TagDictionary bootstrap for the "mcp:" namespace.
+    // Token tags work without it — this only affects Workbench TagBrowser
+    // visibility. See McpTags javadoc for why we don't auto-construct
+    // a BTagDictionary in v0.5.
+    boolean tagDictReady = McpTags.attemptDictionaryBootstrap();
+    if (!tagDictReady) {
+      bcLog("mcp: TagDictionary not registered (token tags still work; " +
+            "operator may add a BTagDictionaryFile under " +
+            "Services/TagDictionaryService for Workbench TagBrowser visibility — " +
+            "see samples/README.md v0.5 section)");
+    }
+
+    // v0.5: install audit pipeline. JsonlAuditWriter is primary
+    // (always-on, full record). BAuditHistoryServiceAdapter is
+    // best-effort secondary — no-op when history-rt isn't installed
+    // (lightweight JACE) or the service isn't running.
+    File auditFile = new File(resolveKnowledgeFile().getParentFile(), "niagaramcp.audit.log");
+    JsonlAuditWriter jsonl = new JsonlAuditWriter(auditFile);
+    BAuditHistoryServiceAdapter wbAudit = BAuditHistoryServiceAdapter.install(
+        new BAuditHistoryServiceAdapter.WarningSink() {
+          public void warn(String msg) {
+            bcLog("BAuditHistoryService unavailable (" + msg
+                + "); JSONL remains primary at " + auditFile.getAbsolutePath());
+          }
+        });
+    Audit.install(new Audit.CompositeAuditor().add(jsonl).add(wbAudit));
 
     ToolRegistry r = new ToolRegistry();
     // v0.3.1: skip operator-disabled tools (read directly from this — INSTANCE not set yet)
@@ -283,6 +355,18 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     r.register((Tool) new GetDiagnosticDumpTool());
     // v0.4.1 diagnostics — static feature inventory
     r.register((Tool) new GetFeatureDumpTool());
+    // v0.5: first user-Context write tool (reference for the M1 set)
+    r.register((Tool) new CreateComponentTool());
+    // v0.5: test-only helper for smoke step 25 (gated by enableTestSetup)
+    r.register((Tool) new SetupTestUserTool());
+    // v0.5.1: M1 write-tools tail
+    r.register((Tool) new RemoveComponentTool());
+    r.register((Tool) new SetSlotTool());
+    r.register((Tool) new InvokeActionTool());
+    r.register((Tool) new AddExtensionTool());
+    r.register((Tool) new LinkSlotsTool());
+    r.register((Tool) new UnlinkSlotsTool());
+    r.register((Tool) new CommitStationTool());
     REGISTRY = r;
 
     // v0.3 — Resources
@@ -354,6 +438,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public void serviceStopped() throws Exception {
     bcLog("serviceStopped");
     McpSessions.closeAll();
+    Audit.clear();
     REGISTRY  = null;
     RESOURCES = null;
     PROMPTS   = null;
@@ -403,6 +488,23 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static String apiToken() {
     BMcpPlatformService s = INSTANCE;
     return (s == null) ? "" : s.getApiToken();
+  }
+
+  /**
+   * @return base64-encoded per-service salt for hashing user MCP tokens,
+   *         or empty string if the service is not started yet. Salt is
+   *         lazy-generated on first {@link #serviceStarted()} and
+   *         persists in .bog across restarts.
+   */
+  public static String tokenSalt() {
+    BMcpPlatformService s = INSTANCE;
+    return (s == null) ? "" : s.getTokenSalt();
+  }
+
+  /** @return whether the test-only {@code setupTestUser} tool is enabled. */
+  public static boolean enableTestSetup() {
+    BMcpPlatformService s = INSTANCE;
+    return (s != null) && s.getEnableTestSetup();
   }
 
   public static int sseHeartbeatSec() {

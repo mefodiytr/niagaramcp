@@ -1,7 +1,268 @@
-# Session notes: v0.2.0 → v0.4.1 release work
+# Session notes: v0.2.0 → v0.5.1 release work
 
-**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1
+**Версии:** v0.1.0 → v0.2.0 → v0.3.0 → v0.3.1 → v0.4.0 → v0.4.1 → v0.5 → v0.5.1
 **Время:** несколько сессий, май 2026.
+
+---
+
+## v0.5.1 — M1 write-tools tail (2026-05-10)
+
+**Branch:** `v0.5.1-write-tools` — **stacked на `v0.5-user-context`**
+(оба unmerged). Rebase plan на main после merge'а v0.5 — content
+identical, hashes change.
+**Commits:** 8 атомарных. **LOC:** +1 662 / −5 = **+1 657 net**.
+**Jar:** ≈230 KiB (v0.5) → ≈238 KiB estimated.
+
+### Что добавлено
+
+- **6 новых write-tools** (плюс v0.5 createComponent = M1 set
+  complete):
+  - `removeComponent` (DESTRUCTIVE) — `parent.remove(slot, cx)`,
+    default `dryRun=true`, inbound-link safety check,
+    `force=true` override. Outbound (component-as-source) detection
+    отложено до v0.6 (требует station walk).
+  - `setSlot` (MUTATION) — `BComplex.set(prop, value, cx)` с
+    BSimple coercion (BString/BBoolean/BInteger/BLong/BFloat/BDouble).
+    Complex types (BStatusValue/BFacets/...) — refuse с -32602 +
+    hint.
+  - `invokeAction` (MUTATION) — `BComponent.invoke(Action, BValue, cx)`,
+    parameter coercion из default's class. Returns `{returnValue,
+    returnType, durationMs}`.
+  - `addExtension` (MUTATION) — `parent.add(name, extInstance, cx)`
+    для extension types. v0.5.1 без type-applicability pre-check
+    (Niagara валидирует в add(), -32603); pre-check + dedicated
+    -32015 — v0.5.2.
+  - `linkSlots` (MUTATION) — `sink.makeLink(source, sourceSlot,
+    sinkSlot, cx) + sink.add(linkName, link, cx)`. Pre-check через
+    `sink.checkLink(...)` → `LinkCheck.isValid()` → -32016
+    ERR_LINK_TYPE_MISMATCH с reason. Auto-pick converter
+    (`convert: true`) — отложено в v0.5.2.
+  - `unlinkSlots` (DESTRUCTIVE) — `sink.remove(linkProperty, cx)`.
+    Refuse если ord не BLink (предотвращает случайное удаление
+    обычных компонент).
+  - `commitStation` (MUTATION) — `BStation.doSave(Context)` под
+    user-Context. Использует Context-taking variant вместо
+    no-arg `save()` чтобы permission-check работал через gateway.
+- **4 новых error code** (-32013..-32016):
+  - `ERR_COMPONENT_HAS_INBOUND_LINKS` (removeComponent refused)
+  - `ERR_ACTION_NOT_FOUND` (invokeAction)
+  - `ERR_EXTENSION_NOT_APPLICABLE` (declared, активно используется
+    с v0.5.2)
+  - `ERR_LINK_TYPE_MISMATCH` (linkSlots checkLink failure)
+- **Smoke client +6 шагов** (26-31): createComponent fixture →
+  setSlot → invokeAction error-path → commitStation →
+  removeComponent dryRun preview → removeComponent actual cleanup.
+  Total: 25 (v0.5) → 31 (v0.5.1). Reuses v0.5 pre-flight (test
+  BUser, enableTestSetup).
+
+### Что обнаружилось при разработке
+
+- **`BStation` имеет и `save()`, и `doSave(Context)`.** No-arg
+  variant — convenience, идёт под default cx (= service identity);
+  Context-taking — propagates user identity. Используем второй для
+  audit'а.
+- **`BLink` хранится как child slot на sink-компоненте.**
+  Поэтому `sink.getLinks()` возвращает inbound links — этого
+  достаточно для removeComponent safety check без station walk.
+- **`LinkCheck` API чистый**: `BComponent.checkLink(...)` отдаёт
+  `LinkCheck` с `isValid()` + `getInvalidReason()`. Niagara сама
+  type-compatibility predicate, мы только surface причину в
+  -32016 data.
+- **`BComplex.getPropertyInParent()` — каноничный slot resolver**.
+  Initial RemoveComponentTool draft использовал
+  `parent.getProperty(target.getSlot(target))` который не
+  composes; recon поправил до commit'а. Same fix применился в
+  unlinkSlots.
+
+### Что отложено в v0.5.2 / v0.6
+
+- Auto-pick `BTypeConverter` на link-mismatch (convert flag +
+  named converterType).
+- `addExtension` type-applicability pre-check + активация
+  -32015.
+- `BValueCoercer` helper — dedupe SetSlot ↔ InvokeAction
+  primitive coercion (cosmetic).
+- `unlinkSlots` ergonomic args `{sinkOrd, linkName}` (alongside
+  current `{linkOrd}`).
+- Smoke e2e fixtures для addExtension / linkSlots / unlinkSlots
+  (требуют station-specific helper).
+- `clearSlot` tool (отдельная семантика от setSlot — reset to
+  type default).
+
+### Branch state
+
+- `v0.5.1-write-tools` — unmerged (stacked).
+- `v0.5-user-context` — unmerged (under review).
+- `main` — at v0.4.1 merge.
+- Stack: main (v0.4.1) → v0.5-user-context (11 commits) →
+  v0.5.1-write-tools (8 + 5 fix commits).
+
+### Surprises
+
+- M1-tail оказался mechanically rep — все tools follow
+  createComponent reference shape (resolve / validate / OpDesc /
+  gateway.run). Каждый tool ≈ 200-280 LOC, без новой
+  архитектурной работы.
+- 7-tool batch shipped в одном branch'е без блокеров — recon из
+  v0.5 design pass покрыл API surface'ы заранее.
+
+### Real-station smoke bring-up (2026-05-11)
+
+Прогон smoke против живой 4.15.3.28 — 5 fix-коммитов поверх
+`v0.5.1-write-tools`, итог **33 passed / 0 failed**.
+
+- **`mcp:tokenHash` персистится без cx** — `BUser.tags().set(Tag)`
+  без Context отрабатывает; user-Bearer auth заработала сразу после
+  пересборки jar'а (первые 401 были из-за того, что smoke не
+  перехватывал `Mcp-Session-Id` из ответа `initialize()` на v0.5/v0.5.1
+  путях — fix `eca9523`/`4c879b7`). Диаг-поля в `setupTestUser`
+  (`tagsSetReturned`/`readbackHash`/`readbackMatches`) добавлены для
+  этого расследования и оставлены.
+- **`slot:/...` ord на servlet-потоке резолвится от локального хоста.**
+  `createComponent` возвращал `slot:/Drivers/Foo` (через
+  `getSlotPath()`), и `BOrd.make("slot:/...").get()` в servlet-хендлере
+  резолвил относительный путь от неявной базы потока — локального хоста
+  → `ord not resolvable: localhost`. Декомпиляция baja:
+  `getSlotPathOrd()` == `BOrd.make(getSlotPath())` — тоже относительный,
+  так что первый fix (`4612c06`) не помог. Решение — хелпер
+  `tools.Ords`: `resolve(s)` = `BOrd.make(s).get(Sys.getStation())`
+  (относительный `slot:/...` от корня станции, абсолютные ords базу
+  игнорируют) + `stationOrd(c)` = `"station:|" + c.getSlotPath()` для
+  результатов. Прошито во все write-тулзы (`cadf51c`).
+- **Коды ошибок тулзов терялись.** Tool, бросающий `RpcException`
+  (-32014 и т.д.), отдавался как `{isError:true, content:[{text:"Error:
+  ..."}]}` — код не доезжал до клиента (определять -32013..-32016 было
+  незачем). `McpProtocol.callTool` теперь ловит `RpcException` отдельно
+  и кладёт код/data в `result.errorCode`/`result.errorData` (`271e8e6`).
+- **Smoke step 27 был невалиден** — `setSlot("displayName")` на голом
+  `baja:Folder`, у которого нет настраиваемого скалярного слота (тул
+  правильно отвечал `No such slot`). Теперь: `createComponent`
+  динамического `baja:String`-свойства `note` на фикстуре (тул
+  принимает любой `BValue`, не только компоненты), потом `setSlot`.
+- **`enableTestSetup=true` на станции** — это флаг для smoke/CI; снять
+  обратно в `false` после прогонов.
+
+---
+
+## v0.5 — User-Context gateway + per-user audit (2026-05-10)
+
+**Branch:** `v0.5-user-context` (off `main` после v0.4.1 merge).
+**Commits:** 10 атомарных. **LOC:** +1 867 / −19 = **+1 848 net**.
+**Jar:** 220.4 KiB → ≈230–235 KiB (estimated, +20 class files; точное
+число — после следующего clean assemble).
+
+### Что добавлено
+
+- **User-Context auth pipeline**: Bearer → `BUser` через walk
+  `BUserService.getUsers()` + constant-time compare против
+  `mcp:tokenHash` тэга. Legacy `apiToken` остаётся read-only
+  service identity для мониторинга / read-tools; write-tools под
+  `requiresUserContext=true` отбивают apiToken через
+  `-32011 ERR_USER_NOT_FOUND` ДО dispatch'а.
+- **`UserContextGateway.run(BUser, OpDesc, args, sessionId,
+  ContextAwareWork<T>)`** — единственная entry-point для write-tools.
+  Строит `BasicContext(user)`, оборачивает `PermissionException` в
+  `-32010` с rich `data{user, ord, operation, tool, detail}`,
+  emit'ит один audit-record на вызов.
+- **Audit pipeline**: JSONL primary (всегда on, full record:
+  `{ts, user, sessionId, tool, ord, action, args, resultOk,
+  durationMs, errorCode, errorMessage}`), best-effort secondary
+  через `BAuditHistoryServiceAdapter` — reflection-only на
+  `com.tridium.history.audit.BAuditHistoryService`, никакого
+  compile-time dep на `history-rt` (lightweight JACE стартует без
+  `NoClassDefFoundError`). Redactor с regex blacklist
+  `(password|secret|token|apikey|passcode|pwd|credential)` +
+  256-char string truncation.
+- **Tool interface**: 2 default-метода — `requiresUserContext()`
+  (default `false`) и `annotations()` (default
+  `ToolAnnotations.READ_ONLY`). Per MCP 2025-06-18 §6.1, каждая
+  строка `tools/list` теперь несёт `annotations:{readOnlyHint,
+  destructiveHint, idempotentHint, openWorldHint}` плюс
+  niagaramcp-extension `requiresUserContext`. Существующие 36 tools
+  наследуют дефолты — zero touch.
+- **Auto-promote** JSON-string tool result в
+  `result.structuredContent` (per spec §5.4) — purely additive,
+  legacy clients продолжают читать `content[0].text`. Бэкфилл,
+  обещанный в Q11, случился автоматически для всего каталога.
+- **`createComponent`** (category `write`, annotations `MUTATION`,
+  requiresUserContext) — reference write-tool: добавляет fresh
+  `BComponent` указанного типа как child существующего parent'а
+  под calling user permissions. Args:
+  `{parentOrd, type, name, nameStrategy?:"fail"|"suffix"}`.
+- **`setupTestUser`** (test-only, gated by
+  `enableTestSetup` property; default false) — для smoke step 25:
+  биндит `mcp:tokenHash` тэг к pre-created BUser'у через apiToken,
+  чтобы smoke мог подключиться под user-Bearer без bog-fragment'а в
+  pre-deployment runbook.
+- **Smoke step 25** — e2e mutation: smoke генерит фреш-токен,
+  setupTestUser биндит, reconnect под user-Bearer, createComponent,
+  проверяет `structuredContent.ord`. Покрывает реальный pipeline
+  (BearerResolver → CallContext → Gateway → BasicContext(user) →
+  permission-checked `parent.add` → audit).
+- **2 новых JSON-RPC error code**: `-32010 ERR_PERMISSION_DENIED`,
+  `-32011 ERR_USER_NOT_FOUND`.
+- **2 новых property**: `tokenSalt` (READONLY, lazy-generated),
+  `enableTestSetup` (bool, default false).
+
+### Что обнаружилось при разработке
+
+- **`Sys.makeContext` / `BUserService.runAs` / `BLocalSession.makeContext`
+  не существуют.** В Niagara нет thread-local context; `Context`
+  передаётся explicit в каждый mutating-вызов. Gateway-сигнатура
+  переразвернулась с `run(BUser, ThrowingSupplier<T>)` на
+  `run(BUser, OpDesc, args, sessionId, ContextAwareWork<T>)` — work
+  получает cx и threads его в каждый `parent.add(name, val, cx)`.
+- **`BUser implements Context, Principal`** — BUser сам по себе
+  Context. `new BasicContext(user)` нужен только для default
+  facets, можно и без обёртки.
+- **`BAuditService` отсутствует в публичном API.** Есть только
+  interfaces `Auditor.audit(AuditEvent)` + `SecurityAuditor`.
+  Concrete service `com.tridium.history.audit.BAuditHistoryService`
+  — non-public, не на каждой станции. Перевернуло Q5 design:
+  JSONL primary, BAuditHistoryService через reflection-adapter.
+- **`PermissionException` без rich payload** — только String message.
+  Wrapper собирает `data{user, ord, operation, tool}` из call-site
+  `OpDesc` (поэтому OpDesc — отдельный параметр, не derivable из
+  exception'а).
+- **TagDictionary auto-bootstrap отскоплен**. `BTagDictionary`
+  programmatic-construction требует populated `BTagInfoList` — это
+  отдельный ~100-LOC feature. Commit 4 ship'нул schema-constants +
+  reflection-check «registered already?»; programmatic register —
+  v0.5.x. Tag write/read работает без registration; Workbench
+  TagBrowser entry — опционально.
+
+### Что отложено в v0.5.x / v0.6
+
+- Programmatic BTagDictionary auto-construction.
+- JSONL audit log size-rotation.
+- Operator-configurable `auditRedactPattern` property.
+- Workbench action `generateUserToken(BString)` + MCP tool
+  `rotateMcpToken`.
+- `writePoint` retrofit к `requiresUserContext=true`.
+- M1 write-tools хвост (по шаблону `createComponent`):
+  `removeComponent`, `setSlot`, `invokeAction`, `addExtension`,
+  `linkSlots`/`unlinkSlots`, `commitStation` — единый batch.
+
+### Branch state
+
+- `v0.5-user-context` — unmerged (10 commits).
+- `main` — at v0.4.1 merge.
+- Stack: main (v0.4.1 merged) → v0.5-user-context (10 commits,
+  unmerged).
+
+### Surprises
+
+- Plan был на 9 commits; +1 на ходу — `SetupTestUserTool`
+  extracted из commit 9 в commit 10, чтобы production tool
+  (createComponent) не смешивался в одном review-юните с
+  test-only setupTestUser + enableTestSetup property.
+- Auto-promote JSON-string результата в `structuredContent` —
+  один-к-одному закрыло Q11 backfill «бесплатно» для всех 36
+  существующих tools.
+- Brief estimate "~100 LOC for gateway" не учитывал supporting
+  packages (auth + audit + Tool interface + smoke). Финал ~1 800
+  LOC. Каждая часть осталась "small + focused"; собранный объём —
+  цена за full pipeline в одном release'е.
 
 ---
 

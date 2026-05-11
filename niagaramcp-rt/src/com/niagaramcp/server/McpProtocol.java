@@ -61,7 +61,70 @@ public final class McpProtocol {
   /** Transport disabled by operator (sseEnabled / streamableEnabled property false). */
   public static final int ERR_TRANSPORT_DISABLED    = -32009;
 
+  // ----- niagaramcp-implementation-defined codes (v0.5) ----------
+  /**
+   * User-Context operation refused by Niagara permissions. Wraps
+   * {@link javax.baja.security.PermissionException}. {@code error.data}
+   * carries {@code {user, ord, operation}} captured at the call-site
+   * because the underlying PermissionException only exposes a String
+   * message.
+   */
+  public static final int ERR_PERMISSION_DENIED     = -32010;
+  /**
+   * Bearer token presented does not resolve to any {@code BUser} via
+   * the {@code mcp:tokenHash} tag walk over {@code BUserService}. Used
+   * for tools whose {@code requiresUserContext()} is true. Distinct from
+   * 401 (which fires when no Bearer at all): -32011 fires inside
+   * dispatch when auth succeeded against {@code apiToken} but the
+   * specific tool needs a user identity instead of service identity.
+   */
+  public static final int ERR_USER_NOT_FOUND        = -32011;
+
+  // ----- niagaramcp-implementation-defined codes (v0.5.1) --------
+  /**
+   * {@code removeComponent} refused because the target has at least
+   * one inbound {@link javax.baja.sys.BLink} (another component is
+   * actively reading from a slot on this one). {@code error.data}
+   * carries {@code {ord, inboundLinkCount, sampleSourceOrds[]}}.
+   * Operator must unlink first (or call with {@code force=true}).
+   */
+  public static final int ERR_COMPONENT_HAS_INBOUND_LINKS = -32013;
+  /** Action name not found on the target component for {@code invokeAction}. */
+  public static final int ERR_ACTION_NOT_FOUND      = -32014;
+  /**
+   * Extension type cannot be added under the requested parent
+   * (parent type doesn't satisfy the extension's required-parent
+   * predicate, or extension already present and isn't multi-instance).
+   */
+  public static final int ERR_EXTENSION_NOT_APPLICABLE = -32015;
+  /**
+   * {@code linkSlots} refused because the source slot's value type is
+   * not assignable to the sink slot's type and the caller did not
+   * pass {@code convert=true}. {@code error.data} carries
+   * {@code {sourceType, sinkType}}.
+   */
+  public static final int ERR_LINK_TYPE_MISMATCH    = -32016;
+
+  /**
+   * Backward-compatible entry — assumes no user-Context resolved
+   * (callers from pre-v0.5 code paths). Tools whose
+   * {@code requiresUserContext()} is true will get
+   * {@code -32011 ERR_USER_NOT_FOUND}.
+   */
   public static JSONObject handle(JSONObject request, ToolRegistry registry, Session session) {
+    return handle(request, registry, session, null);
+  }
+
+  /**
+   * v0.5 entry — accepts the {@link javax.baja.user.BUser} resolved by
+   * {@code BearerResolver} from the request's Bearer token.
+   * {@code resolvedUser} is {@code null} when the bearer matched the
+   * read-only {@code apiToken} (service identity) instead of a real
+   * user; tools whose {@code requiresUserContext()} is true reject in
+   * that case via {@link #ERR_USER_NOT_FOUND}.
+   */
+  public static JSONObject handle(JSONObject request, ToolRegistry registry,
+                                  Session session, javax.baja.user.BUser resolvedUser) {
     Object id = request.has("id") ? request.get("id") : null;
     boolean isNotification = !request.has("id");
     String method = request.optString("method", "");
@@ -87,7 +150,7 @@ public final class McpProtocol {
         return ok(id, buildToolsList(registry));
       }
       if ("tools/call".equals(method)) {
-        return ok(id, callTool(registry, params));
+        return ok(id, callTool(registry, params, resolvedUser, session));
       }
       // v0.3 — resources
       if ("resources/list".equals(method)) {
@@ -257,6 +320,11 @@ public final class McpProtocol {
         one.put("category", t.getCategory());            // v0.4: client-side grouping
         one.put("description", t.description());
         one.put("inputSchema", new JSONObject(new JSONTokener(t.schemaJson())));
+        // v0.5: MCP 2025-06-18 §6.1 tool annotations
+        one.put("annotations", t.annotations().toJson());
+        // v0.5: niagaramcp extension — auth requirement hint for clients
+        // that want to surface "this tool requires a user-Context bearer".
+        one.put("requiresUserContext", t.requiresUserContext());
         arr.put(one);
       }
     }
@@ -265,7 +333,8 @@ public final class McpProtocol {
     return result;
   }
 
-  private static JSONObject callTool(ToolRegistry registry, JSONObject params) {
+  private static JSONObject callTool(ToolRegistry registry, JSONObject params,
+                                     javax.baja.user.BUser resolvedUser, Session session) {
     if (registry == null) {
       throw new RpcException(ERR_INTERNAL, "Tool registry not initialized");
     }
@@ -276,18 +345,47 @@ public final class McpProtocol {
       data.put("toolName", name);
       throw new RpcException(ERR_TOOL_NOT_FOUND, "Unknown tool: " + name, data);
     }
+    // v0.5: gate tools that require user-Context. Bearer either matched
+    // apiToken (resolvedUser=null = service identity) or didn't resolve
+    // to a BUser via the mcp:tokenHash walk → reject before dispatch.
+    if (t.requiresUserContext() && resolvedUser == null) {
+      JSONObject data = new JSONObject();
+      data.put("tool", name);
+      data.put("requiresUserContext", true);
+      throw new RpcException(ERR_USER_NOT_FOUND,
+          "Tool '" + name + "' requires a user-Context bearer (apiToken " +
+          "matches the service identity, not a BUser)", data);
+    }
     JSONObject args = params.optJSONObject("arguments");
     if (args == null) {
       args = new JSONObject();
     }
 
+    // v0.5: stash {resolvedUser, sessionId} in a thread-local so the
+    // tool body can pull them when invoking UserContextGateway.run(...).
+    // Cleared in finally — never leaks across requests.
+    CallContext.set(resolvedUser, session == null ? "" : session.getSessionId());
+
     String text;
     boolean isError = false;
+    int errorCode = 0;            // 0 = no structured code
+    JSONObject errorData = null;
     try {
       text = t.call(args);
+    } catch (RpcException e) {
+      // Tools throw RpcException for their domain errors (e.g. -32014
+      // ERR_ACTION_NOT_FOUND). MCP reports tool failures via isError
+      // content, not a JSON-RPC error — so carry the code/data forward
+      // as extension fields on the result rather than dropping them.
+      text = e.getMessage();
+      isError = true;
+      errorCode = e.code;
+      errorData = e.data;
     } catch (Exception e) {
       text = "Error: " + e.getMessage();
       isError = true;
+    } finally {
+      CallContext.clear();
     }
 
     JSONObject content = new JSONObject();
@@ -299,7 +397,28 @@ public final class McpProtocol {
 
     JSONObject result = new JSONObject();
     result.put("content", contentArr);
+
+    // v0.5: auto-promote JSON-shaped text result to structuredContent
+    // per MCP 2025-06-18 §5.4. Pure addition — old MCP clients keep
+    // reading content[0].text exactly as before; new clients prefer the
+    // typed structuredContent. Tools that return non-JSON text (errors,
+    // plain string responses) skip this branch silently.
+    if (!isError && text != null && !text.isEmpty()) {
+      char first = text.charAt(0);
+      if (first == '{') {
+        try {
+          result.put("structuredContent", new JSONObject(new JSONTokener(text)));
+        } catch (Exception ignored) { /* not valid JSON object — text-only */ }
+      }
+    }
     result.put("isError", isError);
+    // v0.5.1: when the tool error was a structured RpcException, expose its
+    // code (and any data payload) so clients can branch programmatically on
+    // -32013/-32014/-32015/-32016/... instead of string-matching the text.
+    if (isError && errorCode != 0) {
+      result.put("errorCode", errorCode);
+      if (errorData != null) result.put("errorData", errorData);
+    }
     return result;
   }
 
@@ -324,16 +443,22 @@ public final class McpProtocol {
     return r;
   }
 
-  private static final class RpcException extends RuntimeException {
+  /**
+   * RPC-level exception carrying an MCP error code (one of the {@code ERR_*}
+   * constants on this class) and an optional {@code data} payload. Promoted
+   * to {@code public} in v0.5 so {@link com.niagaramcp.server.auth.UserContextGateway}
+   * can throw it from a sibling package.
+   */
+  public static final class RpcException extends RuntimeException {
     private static final long serialVersionUID = 1L;
-    final int code;
-    final JSONObject data;
+    public final int code;
+    public final JSONObject data;
 
-    RpcException(int code, String msg) {
+    public RpcException(int code, String msg) {
       this(code, msg, null);
     }
 
-    RpcException(int code, String msg, JSONObject data) {
+    public RpcException(int code, String msg, JSONObject data) {
       super(msg);
       this.code = code;
       this.data = data;
