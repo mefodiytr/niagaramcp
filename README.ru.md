@@ -3,7 +3,7 @@
 > **MCP (Model Context Protocol) server for Tridium Niagara stations.**
 > Niagara-модуль (`BIService`), отдающий JSON-RPC через HTTP/SSE — позволяет MCP-совместимым AI-ассистентам (Claude, ChatGPT, IDE) читать/писать точки, обходить slot-tree и исполнять BQL-запросы на живой станции под bearer-token аутентификацией.
 
-🌐 [English](./README.md) · [Русский](./README.ru.md)
+🌐 [English](./README.md) · [Русский](./README.ru.md) · 📖 **[API reference](./docs/API.md)** — endpoints, auth, 46 тулзов, error codes (en)
 
 ---
 
