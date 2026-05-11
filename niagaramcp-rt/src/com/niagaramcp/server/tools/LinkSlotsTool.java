@@ -168,16 +168,11 @@ public final class LinkSlotsTool implements Tool {
     });
 
     // Fully-qualified ord (e.g. "station:|slot:/Logic/Setpoint/RoomTempLink")
-    // so downstream tools (unlinkSlots) can resolve it without a base.
-    String linkOrd;
-    try {
-      Object mounted = sink.get(added.getName());
-      linkOrd = (mounted instanceof BComponent)
-          ? ((BComponent) mounted).getSlotPathOrd().toString()
-          : sink.getSlotPathOrd().toString() + "/" + added.getName();
-    } catch (Exception e) {
-      linkOrd = sinkOrdStr + "/" + linkName;
-    }
+    // so unlinkSlots can resolve it without prefixing it itself.
+    Object mounted = sink.get(added.getName());
+    String linkOrd = (mounted instanceof BComponent)
+        ? Ords.stationOrd((BComponent) mounted) : null;
+    if (linkOrd == null) linkOrd = sinkOrdStr + "/" + linkName;
 
     JSONObject result = new JSONObject();
     result.put("linkOrd",   linkOrd);
@@ -193,7 +188,7 @@ public final class LinkSlotsTool implements Tool {
   private static BComponent resolveComp(String ordStr, String fieldName) {
     BObject obj;
     try {
-      obj = BOrd.make(ordStr).get();
+      obj = Ords.resolve(ordStr);
     } catch (Exception e) {
       throw new McpProtocol.RpcException(McpProtocol.ERR_ORD_NOT_RESOLVABLE,
           fieldName + " not resolvable: " + e.getMessage(), oneField(fieldName, ordStr));

@@ -123,7 +123,7 @@ public final class CreateComponentTool implements Tool {
     // Resolve parent (read-only — no Context needed for ord resolution).
     BObject parentObj;
     try {
-      parentObj = BOrd.make(parentOrd).get();
+      parentObj = Ords.resolve(parentOrd);
     } catch (Exception e) {
       throw new McpProtocol.RpcException(McpProtocol.ERR_ORD_NOT_RESOLVABLE,
           "parentOrd not resolvable: " + e.getMessage(),
@@ -179,20 +179,15 @@ public final class CreateComponentTool implements Tool {
       return parent.add(resolvedNameFinal, value, cx);
     });
 
-    // Build result. Use the newly-mounted child's own slot-path ORD
-    // (fully-qualified, e.g. "station:|slot:/Drivers/Foo") so downstream
-    // tools can resolve it without an explicit base — a bare "slot:/..."
-    // body resolves against the servlet thread's implicit base (the
-    // local host) and fails with "ord not resolvable: localhost".
-    String childOrd;
-    try {
-      BValue mounted = parent.get(added.getName());
-      childOrd = (mounted instanceof BComponent)
-          ? ((BComponent) mounted).getSlotPathOrd().toString()
-          : parent.getSlotPathOrd().toString() + "/" + added.getName();
-    } catch (Exception e) {
-      childOrd = parentOrd + "/" + resolvedNameFinal;
-    }
+    // Build result. Hand back a fully-qualified ord ("station:|slot:/...")
+    // so a follow-up tool call can resolve it: getSlotPath()/getSlotPathOrd()
+    // both stringify relative ("slot:/..."), which resolves against the
+    // servlet thread's implicit base (the local host) and dies with
+    // "ord not resolvable: localhost".
+    BValue mounted = parent.get(added.getName());
+    String childOrd = (mounted instanceof BComponent)
+        ? Ords.stationOrd((BComponent) mounted) : null;
+    if (childOrd == null) childOrd = parentOrd + "/" + resolvedNameFinal;
 
     JSONObject result = new JSONObject();
     result.put("ord",           childOrd);

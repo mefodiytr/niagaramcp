@@ -132,7 +132,7 @@ public final class AddExtensionTool implements Tool {
 
     BObject parentObj;
     try {
-      parentObj = BOrd.make(parentOrd).get();
+      parentObj = Ords.resolve(parentOrd);
     } catch (Exception e) {
       throw new McpProtocol.RpcException(McpProtocol.ERR_ORD_NOT_RESOLVABLE,
           "parentOrd not resolvable: " + e.getMessage(),
@@ -184,17 +184,12 @@ public final class AddExtensionTool implements Tool {
       return parent.add(resolvedNameFinal, value, cx);
     });
 
-    // Fully-qualified ord (e.g. "station:|slot:/Drivers/MyPoint/Hist") so
-    // downstream tools can resolve it without an explicit base.
-    String childOrd;
-    try {
-      BValue mounted = parent.get(added.getName());
-      childOrd = (mounted instanceof BComponent)
-          ? ((BComponent) mounted).getSlotPathOrd().toString()
-          : parent.getSlotPathOrd().toString() + "/" + added.getName();
-    } catch (Exception e) {
-      childOrd = parentOrd + "/" + resolvedNameFinal;
-    }
+    // Fully-qualified ord (e.g. "station:|slot:/Drivers/MyPoint/Hist") so a
+    // follow-up tool call can resolve it without prefixing it itself.
+    BValue mounted = parent.get(added.getName());
+    String childOrd = (mounted instanceof BComponent)
+        ? Ords.stationOrd((BComponent) mounted) : null;
+    if (childOrd == null) childOrd = parentOrd + "/" + resolvedNameFinal;
 
     JSONObject result = new JSONObject();
     result.put("extensionOrd", childOrd);

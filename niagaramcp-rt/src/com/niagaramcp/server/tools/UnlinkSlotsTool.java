@@ -88,7 +88,7 @@ public final class UnlinkSlotsTool implements Tool {
 
     BObject obj;
     try {
-      obj = BOrd.make(linkOrdStr).get();
+      obj = Ords.resolve(linkOrdStr);
     } catch (Exception e) {
       throw new McpProtocol.RpcException(McpProtocol.ERR_ORD_NOT_RESOLVABLE,
           "linkOrd not resolvable: " + e.getMessage(), oneField("ord", linkOrdStr));
@@ -127,11 +127,13 @@ public final class UnlinkSlotsTool implements Tool {
       return null;
     });
 
+    String srcOrd  = Ords.stationOrd(sourceComp);
+    String sinkOrd = Ords.stationOrd(targetComp);
     JSONObject result = new JSONObject();
     result.put("linkOrd",   linkOrdStr);
-    result.put("sourceOrd", sourceComp == null ? "" : sourceComp.getSlotPathOrd().toString());
+    result.put("sourceOrd", srcOrd  == null ? "" : srcOrd);
     result.put("sourceSlot", sourceSlot);
-    result.put("sinkOrd",   targetComp == null ? "" : targetComp.getSlotPathOrd().toString());
+    result.put("sinkOrd",   sinkOrd == null ? "" : sinkOrd);
     result.put("sinkSlot",  targetSlot);
     result.put("removed",   true);
     return result.toString();

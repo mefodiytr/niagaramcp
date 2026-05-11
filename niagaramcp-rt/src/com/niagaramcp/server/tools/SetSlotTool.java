@@ -136,7 +136,7 @@ public final class SetSlotTool implements Tool {
 
     BObject obj;
     try {
-      obj = BOrd.make(ordStr).get();
+      obj = Ords.resolve(ordStr);
     } catch (Exception e) {
       throw new McpProtocol.RpcException(McpProtocol.ERR_ORD_NOT_RESOLVABLE,
           "ord not resolvable: " + e.getMessage(), oneField("ord", ordStr));
