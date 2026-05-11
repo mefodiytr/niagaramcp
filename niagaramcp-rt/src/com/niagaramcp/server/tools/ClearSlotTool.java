@@ -26,6 +26,13 @@ import com.niagaramcp.server.auth.UserContextGateway;
  * or {@code BFacets} slot can be reset too. (Action / Topic slots aren't
  * Property slots, so {@code getProperty} won't find them → {@code -32006}.)
  *
+ * <p>Note: for a <em>dynamic</em> property (one added at runtime via
+ * {@code add(name, value, cx)}) {@code getDefaultValue()} tracks the
+ * property's current value, so {@code clearSlot} is effectively a no-op
+ * there ({@code changed=false}). It's meaningful for <em>frozen</em>
+ * properties, which carry a declared {@code defaultValue} distinct from
+ * whatever the slot currently holds.
+ *
  * <h3>Args</h3>
  * <pre>
  * {
