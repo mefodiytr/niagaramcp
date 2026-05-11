@@ -167,9 +167,14 @@ public final class LinkSlotsTool implements Tool {
       return sink.add(linkName, link, cx);
     });
 
+    // Fully-qualified ord (e.g. "station:|slot:/Logic/Setpoint/RoomTempLink")
+    // so downstream tools (unlinkSlots) can resolve it without a base.
     String linkOrd;
     try {
-      linkOrd = sink.getSlotPath().toString() + "/" + added.getName();
+      Object mounted = sink.get(added.getName());
+      linkOrd = (mounted instanceof BComponent)
+          ? ((BComponent) mounted).getSlotPathOrd().toString()
+          : sink.getSlotPathOrd().toString() + "/" + added.getName();
     } catch (Exception e) {
       linkOrd = sinkOrdStr + "/" + linkName;
     }

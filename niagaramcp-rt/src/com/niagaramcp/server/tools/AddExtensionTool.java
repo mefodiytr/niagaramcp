@@ -184,9 +184,14 @@ public final class AddExtensionTool implements Tool {
       return parent.add(resolvedNameFinal, value, cx);
     });
 
+    // Fully-qualified ord (e.g. "station:|slot:/Drivers/MyPoint/Hist") so
+    // downstream tools can resolve it without an explicit base.
     String childOrd;
     try {
-      childOrd = parent.getSlotPath().toString() + "/" + added.getName();
+      BValue mounted = parent.get(added.getName());
+      childOrd = (mounted instanceof BComponent)
+          ? ((BComponent) mounted).getSlotPathOrd().toString()
+          : parent.getSlotPathOrd().toString() + "/" + added.getName();
     } catch (Exception e) {
       childOrd = parentOrd + "/" + resolvedNameFinal;
     }

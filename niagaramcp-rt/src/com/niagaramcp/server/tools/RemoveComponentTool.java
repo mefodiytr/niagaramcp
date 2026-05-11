@@ -140,7 +140,7 @@ public final class RemoveComponentTool implements Tool {
     if (inbound != null) {
       for (int i = 0; i < inbound.length && i < SAMPLE_LIMIT; i++) {
         BComponent src = inbound[i].getSourceComponent();
-        sampleSources.put(src == null ? "" : src.getSlotPath().toString());
+        sampleSources.put(src == null ? "" : src.getSlotPathOrd().toString());
       }
     }
 

@@ -129,9 +129,9 @@ public final class UnlinkSlotsTool implements Tool {
 
     JSONObject result = new JSONObject();
     result.put("linkOrd",   linkOrdStr);
-    result.put("sourceOrd", sourceComp == null ? "" : sourceComp.getSlotPath().toString());
+    result.put("sourceOrd", sourceComp == null ? "" : sourceComp.getSlotPathOrd().toString());
     result.put("sourceSlot", sourceSlot);
-    result.put("sinkOrd",   targetComp == null ? "" : targetComp.getSlotPath().toString());
+    result.put("sinkOrd",   targetComp == null ? "" : targetComp.getSlotPathOrd().toString());
     result.put("sinkSlot",  targetSlot);
     result.put("removed",   true);
     return result.toString();

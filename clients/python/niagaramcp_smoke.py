@@ -895,7 +895,7 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
             ok(f"newValue set; previousValue={sc.get('previousValue')!r}; type={sc.get('type')}")
             p += 1
         else:
-            fail(f"unexpected setSlot result shape: {sc}")
+            fail(f"unexpected setSlot result: {j.get('result')}")
             f += 1
 
     # --- Step 28: invokeAction with bogus name (error path) ---
@@ -928,7 +928,7 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
                f"durationMs={sc.get('durationMs')}")
             p += 1
         else:
-            fail(f"unexpected commitStation result: {sc}")
+            fail(f"unexpected commitStation result: {j.get('result')}")
             f += 1
 
     # --- Step 30: removeComponent dryRun (default true) ---
@@ -946,7 +946,7 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
             ok(f"dryRun preview: inboundLinkCount={sc.get('inboundLinkCount')}")
             p += 1
         else:
-            fail(f"unexpected dryRun result: {sc}")
+            fail(f"unexpected dryRun result: {j.get('result')}")
             f += 1
 
     # --- Step 31: removeComponent dryRun=false (actual cleanup) ---
@@ -966,7 +966,7 @@ def run_v051_tests(client_apitoken, base, smoke_user, smoke_parent_ord, insecure
             ok(f"removed; (cleanup ok)")
             p += 1
         else:
-            fail(f"removeComponent actual returned removed!=true: {sc}")
+            fail(f"removeComponent actual returned removed!=true: {j.get('result')}")
             f += 1
 
     user_client.delete()

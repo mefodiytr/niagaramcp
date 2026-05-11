@@ -179,10 +179,17 @@ public final class CreateComponentTool implements Tool {
       return parent.add(resolvedNameFinal, value, cx);
     });
 
-    // Build result
+    // Build result. Use the newly-mounted child's own slot-path ORD
+    // (fully-qualified, e.g. "station:|slot:/Drivers/Foo") so downstream
+    // tools can resolve it without an explicit base — a bare "slot:/..."
+    // body resolves against the servlet thread's implicit base (the
+    // local host) and fails with "ord not resolvable: localhost".
     String childOrd;
     try {
-      childOrd = parent.getSlotPath().toString() + "/" + added.getName();
+      BValue mounted = parent.get(added.getName());
+      childOrd = (mounted instanceof BComponent)
+          ? ((BComponent) mounted).getSlotPathOrd().toString()
+          : parent.getSlotPathOrd().toString() + "/" + added.getName();
     } catch (Exception e) {
       childOrd = parentOrd + "/" + resolvedNameFinal;
     }
