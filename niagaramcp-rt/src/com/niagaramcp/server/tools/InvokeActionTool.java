@@ -4,16 +4,9 @@
  */
 package com.niagaramcp.server.tools;
 
-import javax.baja.naming.BOrd;
 import javax.baja.sys.Action;
-import javax.baja.sys.BBoolean;
 import javax.baja.sys.BComponent;
-import javax.baja.sys.BDouble;
-import javax.baja.sys.BFloat;
-import javax.baja.sys.BInteger;
-import javax.baja.sys.BLong;
 import javax.baja.sys.BObject;
-import javax.baja.sys.BString;
 import javax.baja.sys.BValue;
 import javax.baja.user.BUser;
 import com.niagaramcp.json.JSONObject;
@@ -28,7 +21,8 @@ import com.niagaramcp.server.auth.UserContextGateway;
  * <h3>Args</h3>
  * <pre>
  * {
- *   "ord":         "station:|slot:/Drivers/Foo",  // required
+ *   "ord":         "station:|slot:/Drivers/Foo",  // required (absolute or
+ *                                                  //   relative "slot:/...")
  *   "actionName":  "ping",                        // required
  *   "args":        null | "value" | 42 | true     // optional;
  *                                                  // null/missing → use action's parameter default
@@ -40,27 +34,21 @@ import com.niagaramcp.server.auth.UserContextGateway;
  * {
  *   "ord":         "...",
  *   "actionName":  "ping",
- *   "returnValue": "..." | 0.0 | true,
+ *   "returnValue": "..." | 0.0 | true | null,
  *   "returnType":  "baja:Null" | "baja:Boolean" | ...,
  *   "durationMs":  1
  * }
  * </pre>
  *
  * <h3>Argument coercion</h3>
- * Same shape as {@code setSlot}: only BSimple primitives
- * (BString/BBoolean/BInteger/BLong/BFloat/BDouble) supported as
- * arguments. Actions whose parameter type is one of these (or
- * {@code baja:Null} = no argument) work cleanly. Actions taking
- * complex types ({@code BFacets}, {@code BAbsTime}, structured
- * args) refuse with {@code -32602} pointing operator at v0.5.x
- * extension.
+ * Same shape as {@code setSlot} (shared {@link BValueCoercer}): only the
+ * six BSimple primitives (BString/BBoolean/BInteger/BLong/BFloat/BDouble),
+ * or {@code baja:Null} = no argument. Actions taking complex types
+ * (BFacets, BAbsTime, structured args) refuse with {@code -32602}.
  *
  * <h3>annotations</h3>
- * {@code MUTATION} as a default. Some actions are read-only
- * (e.g. {@code ping}) but most are state-changing or trigger
- * side-effects; we can't tell from the action signature alone.
- * Operator-side annotation taxonomy could be added later via tags
- * on the Action slot, but not in v0.5.1.
+ * {@code MUTATION} as a default — we can't tell a read-only action
+ * (e.g. {@code ping}) from a state-changing one by signature alone.
  *
  * <h3>Error codes</h3>
  * <ul>
@@ -84,7 +72,7 @@ public final class InvokeActionTool implements Tool {
     return "Invoke an Action on a BComponent under user-Context. Args: " +
            "{ord, actionName, args?}. args is coerced to the action's " +
            "BSimple parameter type (string/bool/int/long/float/double); " +
-           "complex parameter types not supported in v0.5.1. " +
+           "complex parameter types not supported. " +
            "Returns the action's return value, type, and execution duration.";
   }
 
@@ -148,15 +136,15 @@ public final class InvokeActionTool implements Tool {
     } else {
       Object raw = args.get("args");
       try {
-        paramValue = coerceForActionParam(action, raw);
-      } catch (UnsupportedActionParamException e) {
+        paramValue = BValueCoercer.coerce(action.getParameterDefault(), raw);
+      } catch (BValueCoercer.UnsupportedTypeException e) {
         JSONObject d = new JSONObject();
         d.put("ord", ordStr);
         d.put("actionName", actionName);
         d.put("paramType", action.getParameterType().getTypeSpec().toString());
         d.put("hint", e.hint);
         throw new McpProtocol.RpcException(McpProtocol.ERR_INVALID_PARAMS,
-            "Action parameter type not supported by v0.5.1", d);
+            "Action parameter type not supported (BSimple primitives only)", d);
       } catch (NumberFormatException nfe) {
         throw new McpProtocol.RpcException(McpProtocol.ERR_INVALID_PARAMS,
             "Cannot coerce args to action parameter type: " + nfe.getMessage(),
@@ -177,54 +165,13 @@ public final class InvokeActionTool implements Tool {
     JSONObject result = new JSONObject();
     result.put("ord", ordStr);
     result.put("actionName", actionName);
-    result.put("returnValue", toJsonScalar(ret));
-    result.put("returnType",
-        ret == null ? "null" : ret.getType().getTypeSpec().toString());
+    result.put("returnValue", BValueCoercer.toJsonScalar(ret));
+    result.put("returnType", BValueCoercer.typeSpec(ret));
     result.put("durationMs", durationMs);
     return result.toString();
   }
 
-  // ---- coercion ----
-
-  private static BValue coerceForActionParam(Action a, Object raw) {
-    BValue defaultVal = a.getParameterDefault();
-    if (defaultVal instanceof BString)  return BString.make(raw.toString());
-    if (defaultVal instanceof BBoolean) {
-      if (raw instanceof Boolean) return BBoolean.make(((Boolean) raw).booleanValue());
-      String s = raw.toString().trim().toLowerCase();
-      if ("true".equals(s) || "1".equals(s))  return BBoolean.TRUE;
-      if ("false".equals(s) || "0".equals(s)) return BBoolean.FALSE;
-      throw new NumberFormatException("not a boolean: " + raw);
-    }
-    if (defaultVal instanceof BInteger) return BInteger.make(toInt(raw));
-    if (defaultVal instanceof BLong)    return BLong.make(toLong(raw));
-    if (defaultVal instanceof BFloat)   return BFloat.make((float) toDouble(raw));
-    if (defaultVal instanceof BDouble)  return BDouble.make(toDouble(raw));
-    UnsupportedActionParamException e = new UnsupportedActionParamException();
-    e.hint = "Parameter default class is " + (defaultVal == null ? "null" : defaultVal.getClass().getSimpleName())
-           + "; v0.5.1 only supports BSimple primitives for action args.";
-    throw e;
-  }
-
-  private static int    toInt(Object raw)    { return raw instanceof Number ? ((Number) raw).intValue()    : Integer.parseInt(raw.toString()); }
-  private static long   toLong(Object raw)   { return raw instanceof Number ? ((Number) raw).longValue()   : Long.parseLong(raw.toString()); }
-  private static double toDouble(Object raw) { return raw instanceof Number ? ((Number) raw).doubleValue() : Double.parseDouble(raw.toString()); }
-
-  private static Object toJsonScalar(BValue v) {
-    if (v == null)              return null;
-    if (v instanceof BString)   return ((BString) v).getString();
-    if (v instanceof BBoolean)  return ((BBoolean) v).getBoolean();
-    if (v instanceof BInteger)  return ((BInteger) v).getInt();
-    if (v instanceof BLong)     return ((BLong) v).getLong();
-    if (v instanceof BFloat)    return ((BFloat) v).getFloat();
-    if (v instanceof BDouble)   return ((BDouble) v).getDouble();
-    return v.toString();
-  }
-
-  private static final class UnsupportedActionParamException extends RuntimeException {
-    private static final long serialVersionUID = 1L;
-    String hint;
-  }
+  // ---- helpers ----
 
   private static String requiredString(JSONObject args, String key) {
     String v = args.optString(key, "");
