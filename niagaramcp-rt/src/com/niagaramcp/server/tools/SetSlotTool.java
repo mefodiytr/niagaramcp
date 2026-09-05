@@ -44,13 +44,18 @@ import com.niagaramcp.server.auth.UserContextGateway;
  * </pre>
  *
  * <h3>Type coercion</h3>
- * Supported existing slot types: the six BSimple primitives handled by
- * {@link BValueCoercer} (BString/BBoolean/BInteger/BLong/BFloat/BDouble).
+ * Supported existing slot types: any {@code BSimple}, handled by
+ * {@link BValueCoercer}. BString/BBoolean/BInteger/BLong/BFloat/BDouble
+ * take JSON scalars; every other {@code BSimple} — BNameMap, frozen enums
+ * such as BPollFrequency, BRelTime, BOrd, BAbsTime, BFacets — takes its
+ * canonical string form (the same literal {@code getSlots} reports).
  * To reset a slot to its declared default use {@code clearSlot}; to write
  * a status-value priority slot use {@code writePoint}. {@code null} input
- * is refused with {@code -32602} (use {@code clearSlot}). Other complex
- * slot types (BFacets, BOrd, BAbsTime, ...) are refused with {@code -32602}
- * pointing at the type-specific tool that would be needed.
+ * is refused with {@code -32602} (use {@code clearSlot}). Complex and
+ * component slot types are refused with {@code -32602} pointing at the
+ * type-specific tool that would be needed. A malformed literal for an
+ * otherwise-supported type is also {@code -32602}, and the slot is left
+ * unchanged.
  *
  * <h3>requiresUserContext + annotations</h3>
  * {@code requiresUserContext=true}, {@code annotations=MUTATION}.
@@ -154,7 +159,7 @@ public final class SetSlotTool implements Tool {
       d.put("existingType", BValueCoercer.typeSpec(existing));
       d.put("hint", e.hint);
       throw new McpProtocol.RpcException(McpProtocol.ERR_INVALID_PARAMS,
-          "Slot type not supported by setSlot (BSimple primitives only)", d);
+          "Slot type not supported by setSlot", d);
     } catch (NumberFormatException nfe) {
       throw new McpProtocol.RpcException(McpProtocol.ERR_INVALID_PARAMS,
           "Cannot coerce value to existing slot type: " + nfe.getMessage(),

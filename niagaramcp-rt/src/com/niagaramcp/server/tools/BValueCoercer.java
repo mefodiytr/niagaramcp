@@ -9,6 +9,7 @@ import javax.baja.sys.BDouble;
 import javax.baja.sys.BFloat;
 import javax.baja.sys.BInteger;
 import javax.baja.sys.BLong;
+import javax.baja.sys.BSimple;
 import javax.baja.sys.BString;
 import javax.baja.sys.BValue;
 
@@ -16,13 +17,29 @@ import javax.baja.sys.BValue;
  * Shared JSON &harr; Niagara {@code BSimple} coercion for the v0.5+ write
  * tools ({@code setSlot}, {@code invokeAction}, {@code clearSlot}).
  *
- * <p>Deliberately narrow: only the six {@code BSimple} primitives that
- * round-trip cleanly to/from JSON scalars — {@link BString},
- * {@link BBoolean}, {@link BInteger}, {@link BLong}, {@link BFloat},
- * {@link BDouble}. Everything else (status values, facets, ords, abs-times,
- * structured complex types) is rejected via {@link UnsupportedTypeException}
- * so callers can point operators at a type-specific tool ({@code writePoint}
- * already handles status-value priority slots).
+ * <p>Scope is {@link BSimple}, in two tiers:
+ * <ul>
+ *   <li>The six primitives that map onto JSON scalars — {@link BString},
+ *       {@link BBoolean}, {@link BInteger}, {@link BLong}, {@link BFloat},
+ *       {@link BDouble} — are converted directly.</li>
+ *   <li>Every other {@code BSimple} round-trips through the
+ *       {@code encodeToString}/{@code decodeFromString} pair that
+ *       {@code BSimple} itself declares as its canonical text form. That
+ *       covers {@code BNameMap} (a folder's {@code displayNames}), frozen
+ *       enums such as {@code BPollFrequency}, and {@code BRelTime},
+ *       {@code BOrd}, {@code BAbsTime}, {@code BFacets}.</li>
+ * </ul>
+ *
+ * <p>Complex and component types are still rejected via
+ * {@link UnsupportedTypeException} so callers can be pointed at a
+ * type-specific tool ({@code writePoint} already handles status-value
+ * priority slots).
+ *
+ * <p>Widened from the original six-type allowlist because that list blocked
+ * ordinary configuration work on a live station: bulk point renaming
+ * ({@code BNameMap}), driver poll-rate retuning ({@code BPollFrequency})
+ * and component interval changes ({@code BRelTime}) were all unreachable
+ * through {@code setSlot} despite being plain Property-slot writes.
  *
  * <p>Extracted in v0.5.2 from the near-identical copies that lived in
  * {@code SetSlotTool} and {@code InvokeActionTool}.
@@ -41,10 +58,13 @@ final class BValueCoercer {
     UnsupportedTypeException(String hint) { super(hint); this.hint = hint; }
   }
 
-  /** True iff {@code v} is one of the six supported {@code BSimple} primitive types. */
+  /**
+   * True iff {@code v} can be coerced by {@link #coerce}: any {@code BSimple}.
+   * The six JSON-scalar primitives are handled directly; every other
+   * {@code BSimple} round-trips through {@code decodeFromString}.
+   */
   static boolean isSupported(BValue v) {
-    return v instanceof BString  || v instanceof BBoolean || v instanceof BInteger
-        || v instanceof BLong    || v instanceof BFloat   || v instanceof BDouble;
+    return v instanceof BSimple;
   }
 
   /**
@@ -66,12 +86,35 @@ final class BValueCoercer {
     if (template instanceof BLong)    return BLong.make(toLong(raw));
     if (template instanceof BFloat)   return BFloat.make((float) toDouble(raw));
     if (template instanceof BDouble)  return BDouble.make(toDouble(raw));
+
+    // Every other BSimple round-trips through its own string form. BSimple
+    // declares encodeToString/decodeFromString as the canonical textual
+    // representation, so this covers BNameMap (component displayNames),
+    // frozen enums such as BPollFrequency, BRelTime, BOrd, BAbsTime and
+    // BFacets without a branch per type. decodeFromString is conventionally
+    // a factory that ignores instance state; only the runtime class of
+    // template is used, matching the contract of the six cases above.
+    if (template instanceof BSimple) {
+      String s = String.valueOf(raw);
+      try {
+        return (BValue) ((BSimple) template).decodeFromString(s);
+      } catch (Exception e) {
+        // NumberFormatException is what SetSlotTool/InvokeActionTool already
+        // map to -32602 "Cannot coerce value to existing slot type", so a
+        // malformed literal reports as a bad argument rather than a 500.
+        throw new NumberFormatException(
+            "not a valid " + template.getClass().getSimpleName()
+            + " literal: " + e.getMessage());
+      }
+    }
+
     throw new UnsupportedTypeException(
         "Slot/parameter type is "
         + (template == null ? "null" : template.getClass().getSimpleName())
-        + "; only BSimple primitives are supported "
-        + "(BString/BBoolean/BInteger/BLong/BFloat/BDouble). "
-        + "Use a type-specific tool for status values, facets, ords, etc.");
+        + "; only BSimple values are supported. BString/BBoolean/BInteger/"
+        + "BLong/BFloat/BDouble accept JSON scalars; any other BSimple "
+        + "accepts its string form. Complex and component types are not "
+        + "supported — use a type-specific tool for status values.");
   }
 
   /**
@@ -88,6 +131,16 @@ final class BValueCoercer {
     if (v instanceof BLong)    return ((BLong) v).getLong();
     if (v instanceof BFloat)   return ((BFloat) v).getFloat();
     if (v instanceof BDouble)  return ((BDouble) v).getDouble();
+    // Other BSimple values render as their canonical string form, so a
+    // displayNames map or a poll frequency reads back as the same literal
+    // setSlot accepts, rather than "BNameMap@1a2b3c".
+    if (v instanceof BSimple) {
+      try {
+        return ((BSimple) v).encodeToString();
+      } catch (Exception e) {
+        return v.toString();
+      }
+    }
     return v.toString();
   }
 
