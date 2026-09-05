@@ -120,11 +120,16 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "sessionCount",             type = "int",     defaultValue = "0", flags = 3),
   // v0.5: per-service salt for hashing user MCP tokens stored as
   // mcp:tokenHash tags on BUsers. Generated once on first
-  // serviceStarted; persists across restarts via .bog. flags=3
-  // (SUMMARY+READONLY) — visible to operators for diagnostic purposes
-  // but never edited by hand (changing the salt invalidates ALL
+  // serviceStarted; persists across restarts via .bog.
+  // flags=9 (SUMMARY+READONLY) — visible to operators for diagnostic
+  // purposes but never edited by hand (changing the salt invalidates ALL
   // existing user tokens at once, requiring a full rotation).
-  @NiagaraProperty(name = "tokenSalt",                type = "String",  defaultValue = "\"\"", flags = 3),
+  // NOTE: this was flags=3, which is READONLY+TRANSIENT, not the intended
+  // SUMMARY+READONLY (=9). TRANSIENT excludes the property from .bog, so the
+  // salt was silently discarded on every station restart and regenerated —
+  // invalidating every bound user token each restart. The comment always said
+  // "persists across restarts" and "SUMMARY+READONLY"; only the value was wrong.
+  @NiagaraProperty(name = "tokenSalt",                type = "String",  defaultValue = "\"\"", flags = 9),
   // v0.5: gate for the test-only `setupTestUser` tool. Default false.
   // When true, smoke client can bind a tokenHash tag to a pre-created
   // BUser via setupTestUser; flip to false in production.
@@ -228,7 +233,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
 
   // v0.5 — per-service salt for token hashing. flags=3.
   // Initial value "" → triggers lazy generation in serviceStarted().
-  public static final Property tokenSalt = newProperty(3, "", null);
+  public static final Property tokenSalt = newProperty(9, "", null);
   public String getTokenSalt() { return getString(tokenSalt); }
   public void setTokenSalt(String v) { setString(tokenSalt, v, null); }
 
@@ -271,12 +276,32 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     SERVICE_START_TIME_MS = System.currentTimeMillis();
 
     // v0.5: lazy-generate per-service salt on first start.
-    // Persists in .bog from then on. Empty -> first ever start (or
-    // operator wiped the value); generate fresh.
+    // Empty -> first ever start (or operator wiped the value); generate fresh.
+    //
+    // The salt MUST be persisted to .bog the moment it is generated. Niagara
+    // does not save the station on shutdown by default, so a salt left only in
+    // the in-memory property is lost on the next restart and regenerated —
+    // which re-hashes to a different value and silently invalidates every
+    // bound mcp:tokenHash on EVERY restart, not just on a module reinstall.
+    // (Observed in the field: three different salts on one station in a day,
+    // each restart killing all user tokens.) setTokenSalt alone is not enough;
+    // save() now, exactly as the knowledge store does for knowledgeData. This
+    // save runs at most once per station lifetime (subsequent starts find a
+    // non-empty salt and skip both the generate and the save).
     if (getTokenSalt() == null || getTokenSalt().isEmpty()) {
       String fresh = TokenHasher.generateSaltBase64();
       setTokenSalt(fresh);
       bcLog("generated initial tokenSalt (length=" + fresh.length() + ")");
+      try {
+        Sys.getStation().save();
+        bcLog("persisted tokenSalt to station config");
+      } catch (Exception e) {
+        // Non-fatal: the service still runs and tokens hash correctly this
+        // session. But the salt will regenerate on the next restart and
+        // invalidate bound user tokens, so surface it loudly.
+        bcLog("WARNING: could not persist tokenSalt (" + e + "); bound user "
+            + "tokens will break on the next station restart until re-provisioned");
+      }
     }
 
     // v0.5: best-effort TagDictionary bootstrap for the "mcp:" namespace.
