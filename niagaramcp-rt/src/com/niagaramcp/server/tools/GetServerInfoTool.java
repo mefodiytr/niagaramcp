@@ -13,6 +13,7 @@ import com.niagaramcp.server.PromptRegistry;
 import com.niagaramcp.server.Resource;
 import com.niagaramcp.server.ResourceRegistry;
 import com.niagaramcp.server.ToolRegistry;
+import com.niagaramcp.server.NiagaraFileUtil;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 
 import java.io.File;
@@ -51,13 +52,12 @@ public final class GetServerInfoTool implements Tool {
     // Knowledge file
     JSONObject kf = new JSONObject();
     KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
-    if (ks != null && ks.getFile() != null) {
-      File f = ks.getFile();
-      kf.put("path", f.getAbsolutePath());
-      kf.put("size", f.exists() ? f.length() : 0);
+    if (ks != null) {
+      kf.put("location", ks.describeLocation());
+      kf.put("size", ks.sizeBytes());
       kf.put("equipmentCount", ks.getModel().equipment.size());
-      kf.put("lastModifiedMs", f.exists() ? f.lastModified() : 0);
-      kf.put("exists", f.exists());
+      kf.put("lastModifiedMs", ks.getLastSavedMs());
+      kf.put("exists", ks.exists());
     }
     out.put("knowledgeFile", kf);
 

@@ -5,11 +5,10 @@
 package com.niagaramcp.server.audit;
 
 import com.niagaramcp.json.JSONObject;
+import com.niagaramcp.server.NiagaraFileUtil;
 
 import java.io.File;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.TimeZone;
@@ -71,15 +70,17 @@ public final class JsonlAuditWriter implements Audit.Auditor {
 
     String s = line.toString() + "\n";
     synchronized (lock) {
-      File parent = file.getParentFile();
-      if (parent != null && !parent.exists()) parent.mkdirs();
-      Files.write(file.toPath(), s.getBytes(UTF8),
-          StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+      NiagaraFileUtil.append(file, s);
     }
   }
 
   /** @return the audit file path (for diagnostics / health checks). */
   public File getFile() { return file; }
+
+  /** Permission-safe existence check — avoids raw {@code File.exists()}. */
+  public boolean exists() {
+    return NiagaraFileUtil.exists(file);
+  }
 
   private static SimpleDateFormat mkIsoFormat() {
     SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");

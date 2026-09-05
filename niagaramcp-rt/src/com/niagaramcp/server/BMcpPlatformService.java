@@ -44,6 +44,7 @@ import com.niagaramcp.server.resources.SampleKnowledgeResource;
 import com.niagaramcp.server.resources.SpaceResource;
 import com.niagaramcp.server.resources.StandalonePointResource;
 import java.io.File;
+import java.io.IOException;
 import com.niagaramcp.server.tools.AssignPointToEquipmentTool;
 import com.niagaramcp.server.tools.BqlQueryTool;
 import com.niagaramcp.server.tools.BulkCreateEquipmentTool;
@@ -108,6 +109,12 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "knowledgeFilePath",        type = "String",  defaultValue = "\"\""),
   @NiagaraProperty(name = "knowledgeAutoBackup",      type = "boolean", defaultValue = "true"),
   @NiagaraProperty(name = "knowledgeBackupCount",     type = "int",     defaultValue = "5"),
+  // v0.5.4: the knowledge document itself, persisted as a station-config
+  // property rather than an independent OS file — see KnowledgeStore
+  // class javadoc and issue #1. HIDDEN: this can be a nontrivial blob of
+  // YAML/JSON text, not something an operator hand-edits in the property
+  // sheet (use the MCP tools, or GET/PUT /niagaramcp/knowledge.yaml).
+  @NiagaraProperty(name = "knowledgeData",            type = "String",  defaultValue = "\"\"", flags = 4),
   @NiagaraProperty(name = "mcpProtocolVersion",       type = "String",  defaultValue = "\"\""),
   @NiagaraProperty(name = "maxHistoryRecordsPerQuery",type = "int",     defaultValue = "10000"),
   @NiagaraProperty(name = "disabledTools",            type = "String",  defaultValue = "\"\""),
@@ -188,6 +195,10 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static final Property knowledgeBackupCount = newProperty(0, 5, null);
   public int getKnowledgeBackupCount() { return getInt(knowledgeBackupCount); }
   public void setKnowledgeBackupCount(int v) { setInt(knowledgeBackupCount, v, null); }
+
+  public static final Property knowledgeData = newProperty(4, "", null);
+  public String getKnowledgeData() { return getString(knowledgeData); }
+  public void setKnowledgeData(String v) { setString(knowledgeData, v, null); }
 
   public static final Property mcpProtocolVersion = newProperty(0, "", null);
   public String getMcpProtocolVersion() { return getString(mcpProtocolVersion); }
@@ -393,11 +404,35 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     pr.register(new QueryAlarmSummaryPrompt());
     PROMPTS = pr;
 
-    // Knowledge store — load from configured path (or default).
+    // Knowledge store — persisted as this component's own knowledgeData
+    // property (station config), not an independent OS file. See
+    // KnowledgeStore class javadoc and issue #1: raw file I/O from
+    // third-party module code isn't reliably permitted on every Niagara
+    // distribution, even via BFileSystem.
     KnowledgeStore ks = new KnowledgeStore();
-    ks.setFile(resolveKnowledgeFile());
-    ks.setAutoBackup(getKnowledgeAutoBackup());
-    ks.setBackupCount(getKnowledgeBackupCount());
+    ks.setBackend(new KnowledgeStore.Backend() {
+      @Override public String read() { return getKnowledgeData(); }
+      @Override public void write(String text) throws IOException {
+        // Roll the property back if the station save fails, so knowledgeData
+        // never advertises a state that was not made durable. The in-memory
+        // KnowledgeModel still holds the caller's mutation; reloadKnowledge
+        // re-reads this property and discards it, and the next successful
+        // save re-serialises the model, so the divergence self-heals either
+        // way. Without the rollback an unrelated later station save would
+        // silently persist a mutation whose own save had reported failure.
+        String previous = getKnowledgeData();
+        setKnowledgeData(text);
+        try {
+          Sys.getStation().save();
+        } catch (Exception e) {
+          try { setKnowledgeData(previous); } catch (Exception ignored) { /* best-effort */ }
+          throw new IOException("Failed to persist station after knowledgeData update", e);
+        }
+      }
+      @Override public String describeLocation() {
+        return "component property " + getSlotPath() + ".knowledgeData";
+      }
+    });
     try {
       ks.load();
     } catch (Exception e) {

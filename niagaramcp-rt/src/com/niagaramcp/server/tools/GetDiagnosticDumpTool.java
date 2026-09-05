@@ -11,11 +11,11 @@ import com.niagaramcp.json.JSONArray;
 import com.niagaramcp.json.JSONObject;
 import com.niagaramcp.server.BMcpPlatformService;
 import com.niagaramcp.server.McpSessions;
+import com.niagaramcp.server.NiagaraFileUtil;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 
 import java.io.File;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.util.List;
 
 /**
@@ -63,12 +63,9 @@ public final class GetDiagnosticDumpTool implements Tool {
     JSONObject knowledge = new JSONObject();
     KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
     if (ks != null) {
-      File f = ks.getFile();
-      if (f != null) {
-        knowledge.put("filePath", f.getAbsolutePath());
-        knowledge.put("fileSize", f.exists() ? f.length() : 0);
-        knowledge.put("exists",   f.exists());
-      }
+      knowledge.put("location", ks.describeLocation());
+      knowledge.put("sizeBytes", ks.sizeBytes());
+      knowledge.put("exists",   ks.exists());
       knowledge.put("equipmentCount",     ks.getModel().equipment.size());
       knowledge.put("spaceCount",         ks.getModel().spaces.size());
       knowledge.put("equipmentTypeCount", ks.getModel().equipmentTypes.size());
@@ -80,11 +77,8 @@ public final class GetDiagnosticDumpTool implements Tool {
     JSONObject health = new JSONObject();
     health.put("alarmService",   svcStatus(BAlarmService.TYPE));
     health.put("historyService", svcStatus(BHistoryService.TYPE));
-    if (ks != null && ks.getFile() != null) {
-      File f = ks.getFile();
-      health.put("knowledgeFile",
-          (f.exists() && f.canRead()) ? "ok"
-                                       : (f.exists() ? "unreadable" : "missing"));
+    if (ks != null) {
+      health.put("knowledgeFile", ks.exists() ? "ok" : "empty");
     } else {
       health.put("knowledgeFile", "no-store");
     }
@@ -96,20 +90,22 @@ public final class GetDiagnosticDumpTool implements Tool {
     return root.toString();
   }
 
-  /** @return last {@link #AUDIT_TAIL_MAX_LINES} lines of the audit log, or empty array. */
+  /**
+   * @return last {@link #AUDIT_TAIL_MAX_LINES} lines of the best-effort
+   * secondary knowledge audit log, or empty array — this is a plain OS
+   * file and isn't guaranteed to be readable on every Niagara distribution.
+   */
   private static JSONArray readAuditTail(KnowledgeStore ks) {
     JSONArray arr = new JSONArray();
-    if (ks == null || ks.getFile() == null) return arr;
-    File parent = ks.getFile().getParentFile();
-    if (parent == null) return arr;
-    File audit = new File(parent, "knowledge.audit.log");
-    if (!audit.exists()) return arr;
+    if (ks == null) return arr;
     try {
-      List<String> lines = Files.readAllLines(audit.toPath(), UTF8);
+      File audit = new File(new File(Sys.getNiagaraUserHome(), "niagaramcp"), "knowledge.audit.log");
+      if (!NiagaraFileUtil.exists(audit)) return arr;
+      List<String> lines = NiagaraFileUtil.readLines(audit);
       int from = Math.max(0, lines.size() - AUDIT_TAIL_MAX_LINES);
       for (int i = from; i < lines.size(); i++) arr.put(lines.get(i));
-    } catch (Exception ignored) {
-      // file may rotate / be locked; report empty tail rather than failing whole dump
+    } catch (Throwable ignored) {
+      // best-effort only; report empty tail rather than failing whole dump
     }
     return arr;
   }

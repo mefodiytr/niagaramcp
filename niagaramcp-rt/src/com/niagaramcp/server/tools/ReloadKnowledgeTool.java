@@ -26,7 +26,7 @@ public final class ReloadKnowledgeTool implements Tool {
     ks.reload();
     JSONObject r = new JSONObject();
     r.put("ok", true);
-    r.put("filePath", ks.getFile() == null ? "" : ks.getFile().getAbsolutePath());
+    r.put("filePath", ks.describeLocation());
     r.put("equipmentCount", ks.getModel().equipment.size());
     return r.toString();
   }

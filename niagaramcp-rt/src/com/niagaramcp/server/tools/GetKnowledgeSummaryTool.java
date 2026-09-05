@@ -29,7 +29,7 @@ public final class GetKnowledgeSummaryTool implements Tool {
     JSONObject out = new JSONObject();
     out.put("schemaVersion", km.schemaVersion);
     out.put("format", ks.getFormat().name().toLowerCase(java.util.Locale.ROOT));
-    out.put("filePath", ks.getFile() == null ? "" : ks.getFile().getAbsolutePath());
+    out.put("filePath", ks.describeLocation());
     out.put("spaceCount",          km.spaces.size());
     out.put("equipmentTypeCount",  km.equipmentTypes.size());
     out.put("equipmentCount",      km.equipment.size());

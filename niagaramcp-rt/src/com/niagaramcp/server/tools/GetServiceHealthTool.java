@@ -9,6 +9,7 @@ import javax.baja.history.BHistoryService;
 import javax.baja.sys.Sys;
 import com.niagaramcp.json.JSONObject;
 import com.niagaramcp.server.BMcpPlatformService;
+import com.niagaramcp.server.NiagaraFileUtil;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 
 import java.io.File;
@@ -32,26 +33,31 @@ public final class GetServiceHealthTool implements Tool {
 
     KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
     JSONObject kfJson = new JSONObject();
-    if (ks != null && ks.getFile() != null) {
-      File f = ks.getFile();
-      kfJson.put("path", f.getAbsolutePath());
-      kfJson.put("exists", f.exists());
-      kfJson.put("readable", f.exists() && f.canRead());
-      // writable applies to either the file itself OR the parent dir for create
-      File writeProbe = f.exists() ? f : f.getParentFile();
-      kfJson.put("writable", writeProbe != null && writeProbe.canWrite());
+    if (ks != null) {
+      // Persisted as a station-config property (see KnowledgeStore class
+      // javadoc / issue #1) — always readable/writable through this API,
+      // unlike an OS file which can genuinely be denied.
+      kfJson.put("location", ks.describeLocation());
+      kfJson.put("exists", ks.exists());
+      kfJson.put("readable", true);
+      kfJson.put("writable", true);
     } else {
       kfJson.put("error", "knowledge store not initialised");
     }
     out.put("knowledgeFile", kfJson);
 
+    // Best-effort secondary audit trail — a plain OS file, not guaranteed
+    // to be writable on every Niagara distribution.
     JSONObject auditJson = new JSONObject();
-    if (ks != null && ks.getFile() != null) {
-      File parent = ks.getFile().getParentFile();
-      File audit = (parent != null) ? new File(parent, "knowledge.audit.log") : null;
-      auditJson.put("path", audit == null ? "" : audit.getAbsolutePath());
-      auditJson.put("writable", audit != null && (audit.exists() ? audit.canWrite()
-                                                                 : (parent != null && parent.canWrite())));
+    try {
+      File dir = new File(Sys.getNiagaraUserHome(), "niagaramcp");
+      File audit = new File(dir, "knowledge.audit.log");
+      auditJson.put("path", audit.getAbsolutePath());
+      auditJson.put("writable", NiagaraFileUtil.exists(audit) ? NiagaraFileUtil.canWrite(audit)
+                                                               : NiagaraFileUtil.canWrite(dir));
+    } catch (Throwable t) {
+      auditJson.put("writable", false);
+      auditJson.put("note", "best-effort secondary log; unavailable on this platform");
     }
     out.put("knowledgeAuditLog", auditJson);
 

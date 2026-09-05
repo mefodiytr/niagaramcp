@@ -63,6 +63,7 @@ public final class McpServlet extends UnauthenticatedServlet {
       if (!checkTransportEnabled(resp, BMcpPlatformService.streamableEnabled(), "streamable-http")) return;
       handleStreamableGet(req, resp); return;
     }
+    if ("knowledge.yaml".equals(path)) { handleKnowledgeGet(req, resp); return; }
     sendPlain(resp, 404, "Not Found: /" + path);
   }
 
@@ -79,6 +80,22 @@ public final class McpServlet extends UnauthenticatedServlet {
       if (!checkTransportEnabled(resp, BMcpPlatformService.streamableEnabled(), "streamable-http")) return;
       handleStreamablePost(req, resp); return;
     }
+    sendPlain(resp, 404, "Not Found: /" + path);
+  }
+
+  /**
+   * PUT /knowledge.yaml — replace the whole knowledge document with the
+   * raw YAML/JSON request body (no MCP session/JSON-RPC framing needed).
+   * Same Bearer auth as every other endpoint except /health. Intended for
+   * external agents/tools/scripts that want to read or replace the
+   * knowledge document without implementing the MCP protocol itself.
+   */
+  @Override
+  protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    if (!checkServiceEnabled(resp)) return;
+    if (!checkAuth(req, resp)) return;
+    String path = stripSlash(req.getPathInfo());
+    if ("knowledge.yaml".equals(path)) { handleKnowledgePut(req, resp); return; }
     sendPlain(resp, 404, "Not Found: /" + path);
   }
 
@@ -352,15 +369,12 @@ public final class McpServlet extends UnauthenticatedServlet {
     if (historyOk) healthyServices.put("history"); else healthy = false;
     healthyServices.put("web"); // we are the web servlet — alive by definition
 
-    // Knowledge file
+    // Knowledge — persisted as a station-config property, so "readable" is
+    // structurally guaranteed once the service is up; just report size.
     long knowledgeSize = -1;
     KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
-    if (ks != null && ks.getFile() != null) {
-      File f = ks.getFile();
-      if (f.exists()) {
-        if (!f.canRead()) healthy = false;
-        knowledgeSize = f.length();
-      }
+    if (ks != null && ks.exists()) {
+      knowledgeSize = ks.sizeBytes();
     }
 
     out.put("status",  healthy ? "ok" : "degraded");
@@ -377,6 +391,50 @@ public final class McpServlet extends UnauthenticatedServlet {
     PrintWriter w = resp.getWriter();
     w.write(out.toString());
     w.flush();
+  }
+
+  /**
+   * GET /niagaramcp/knowledge.yaml — the current knowledge document as raw
+   * YAML/JSON text. Bearer auth required (unlike /health). Exists so any
+   * tool that can make an HTTP request — not just MCP clients — can read
+   * or (via PUT) replace the knowledge document without implementing the
+   * MCP session/JSON-RPC handshake at all.
+   */
+  private static void handleKnowledgeGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
+    if (ks == null) { sendPlain(resp, 503, "Knowledge store not available"); return; }
+    resp.setStatus(200);
+    resp.setContentType("application/yaml; charset=utf-8");
+    PrintWriter w = resp.getWriter();
+    w.write(ks.toText());
+    w.flush();
+  }
+
+  /**
+   * PUT /niagaramcp/knowledge.yaml — replace the entire knowledge document
+   * with the raw YAML/JSON request body. Equivalent to the
+   * {@code importKnowledge} tool with {@code mode=replace}, exposed as a
+   * plain HTTP resource instead of an MCP tool call.
+   */
+  private static void handleKnowledgePut(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+    KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
+    if (ks == null) { sendPlain(resp, 503, "Knowledge store not available"); return; }
+    String body = readRawBody(req);
+    if (body == null || body.trim().length() == 0) {
+      sendPlain(resp, 400, "Empty request body");
+      return;
+    }
+    try {
+      Object tree = com.niagaramcp.server.yaml.YamlReader.parse(body);
+      com.niagaramcp.server.knowledge.KnowledgeModel newModel =
+          com.niagaramcp.server.knowledge.KnowledgeModel.fromTree(tree);
+      ks.setModel(newModel);
+      ks.save("httpPut", "replace", null);
+    } catch (Exception e) {
+      sendPlain(resp, 400, "Invalid knowledge document: " + e.getMessage());
+      return;
+    }
+    sendPlain(resp, 200, "OK");
   }
 
   private static boolean svcAvailable(javax.baja.sys.Type t) {
@@ -437,6 +495,10 @@ public final class McpServlet extends UnauthenticatedServlet {
   }
 
   private static JSONObject readJson(HttpServletRequest req) throws IOException {
+    return new JSONObject(new JSONTokener(readRawBody(req)));
+  }
+
+  private static String readRawBody(HttpServletRequest req) throws IOException {
     BufferedReader r = new BufferedReader(
         new InputStreamReader(req.getInputStream(), "UTF-8"));
     StringBuilder sb = new StringBuilder();
@@ -444,7 +506,7 @@ public final class McpServlet extends UnauthenticatedServlet {
     while ((line = r.readLine()) != null) {
       sb.append(line).append('\n');
     }
-    return new JSONObject(new JSONTokener(sb.toString()));
+    return sb.toString();
   }
 
   private static String stripSlash(String s) {
