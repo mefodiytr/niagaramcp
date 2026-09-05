@@ -13,6 +13,7 @@ import com.niagaramcp.server.PromptRegistry;
 import com.niagaramcp.server.Resource;
 import com.niagaramcp.server.ResourceRegistry;
 import com.niagaramcp.server.ToolRegistry;
+import com.niagaramcp.server.NiagaraFileUtil;
 import com.niagaramcp.server.knowledge.KnowledgeStore;
 
 import java.io.File;
@@ -158,12 +159,9 @@ public final class GetFeatureDumpTool implements Tool {
     // Knowledge
     KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
     if (ks != null) {
-      File f = ks.getFile();
-      if (f != null) {
-        s.knowledgeFilePath   = f.getAbsolutePath();
-        s.knowledgeFileExists = f.exists();
-        s.knowledgeFileSize   = s.knowledgeFileExists ? f.length() : 0L;
-      }
+      s.knowledgeFilePath   = ks.describeLocation();
+      s.knowledgeFileExists = ks.exists();
+      s.knowledgeFileSize   = ks.sizeBytes();
       s.equipmentCount       = ks.getModel().equipment.size();
       s.spaceCount           = ks.getModel().spaces.size();
       s.equipmentTypeCount   = ks.getModel().equipmentTypes.size();
@@ -172,10 +170,8 @@ public final class GetFeatureDumpTool implements Tool {
 
     s.alarmServiceHealth   = svcStatus(javax.baja.alarm.BAlarmService.TYPE);
     s.historyServiceHealth = svcStatus(javax.baja.history.BHistoryService.TYPE);
-    if (ks != null && ks.getFile() != null) {
-      File f = ks.getFile();
-      s.knowledgeFileHealth = (f.exists() && f.canRead()) ? "ok"
-                                                          : (f.exists() ? "unreadable" : "missing");
+    if (ks != null) {
+      s.knowledgeFileHealth = ks.exists() ? "ok" : "empty";
     } else {
       s.knowledgeFileHealth = "no-store";
     }
