@@ -356,10 +356,18 @@ public final class McpServlet extends UnauthenticatedServlet {
     long knowledgeSize = -1;
     KnowledgeStore ks = BMcpPlatformService.getKnowledgeStore();
     if (ks != null && ks.getFile() != null) {
-      File f = ks.getFile();
-      if (f.exists()) {
-        if (!f.canRead()) healthy = false;
-        knowledgeSize = f.length();
+      final File f = ks.getFile();
+      // v0.5.4: privileged stat; a SecurityException marks health degraded
+      // instead of failing the whole /health request.
+      try {
+        long[] st = Privileged.call(() -> new long[] {
+            f.exists() ? 1 : 0, f.canRead() ? 1 : 0, f.exists() ? f.length() : -1 });
+        if (st[0] == 1) {
+          if (st[1] == 0) healthy = false;
+          knowledgeSize = st[2];
+        }
+      } catch (Exception e) {
+        healthy = false;
       }
     }
 
@@ -427,7 +435,11 @@ public final class McpServlet extends UnauthenticatedServlet {
     if (header == null || !header.startsWith("Bearer ")) return null;
     String token = header.substring(7).trim();
     String apiToken = BMcpPlatformService.apiToken();
-    if (apiToken != null && apiToken.equals(token)) return null;  // service identity
+    if (apiToken != null && apiToken.equals(token)) {
+      // v0.5.4: apiToken runs as apiTokenUser when configured, else
+      // service identity (null) as before.
+      return BMcpPlatformService.apiTokenBUser();
+    }
     return com.niagaramcp.server.auth.BearerResolver.resolve(token).orElse(null);
   }
 

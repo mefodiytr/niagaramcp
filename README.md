@@ -348,6 +348,29 @@ removed from the embedded `com.niagaramcp.json` package. Jar size
 
 ---
 
+## Writes on a live station (v0.5.4)
+
+Fixes for stations that run the module as a service (validated on
+Niagara 4.15.1.16):
+
+- **`apiTokenUser`** (new `BMcpPlatformService` property, default empty) —
+  name an enabled `BUser` and requests authenticated with `apiToken` run as
+  that user: write tools work under that user's Niagara permissions and are
+  audited under its name. Empty keeps the old behaviour (`apiToken` =
+  read-only service identity, writes → `-32011`, now with a `hint`).
+- **`tokenSalt` is persisted** — it was `READONLY | TRANSIENT` (`flags = 3`),
+  so a new salt was generated on every start and per-user `mcp:tokenHash`
+  tokens stopped matching after a restart. Re-bind existing user tokens once.
+- **No more `AccessControlException` (`java.io.FilePermission`)** on the
+  knowledge/audit files — tool calls, resource reads, the knowledge load and
+  the `/health` file check run in `AccessController.doPrivileged`.
+- **Default knowledge file** → `<station_home>/niagaramcp/knowledge.yaml`.
+  An explicit `knowledgeFilePath` still wins.
+
+Upgrading: swap the jar and restart; existing service settings are kept.
+
+---
+
 ## Link conversion (v0.5.3)
 
 - **`linkSlots` `converterType` arg** — `linkSlots {..., "converterType":

@@ -68,6 +68,59 @@ commit:
 
 ---
 
+## v0.5.4 — release notes (paste into the GitHub Release)
+
+```markdown
+# niagaramcp v0.5.4 — writes on live stations
+
+Fixes that make the write tools usable on a station running the module as a
+service. Protocol and tool set unchanged (`tools/list` 46).
+
+## Fixed
+
+- **`tokenSalt` persisted** — it was `flags = 3` = `READONLY | TRANSIENT`,
+  so it was regenerated on every station start and per-user
+  `mcp:tokenHash` tokens stopped matching after a restart. Now `READONLY`.
+  Re-bind existing user tokens once after upgrading.
+- **`AccessControlException` (`java.io.FilePermission`)** on the
+  knowledge/audit files (`getServerInfo`, `getFeatureDump`, …) on live
+  stations. Tool calls, resource reads, the knowledge load at start and the
+  `/health` file stat now run inside `AccessController.doPrivileged`
+  (new `Privileged` helper). Niagara user permissions are unaffected.
+- **Default knowledge file** → `<station_home>/niagaramcp/knowledge.yaml`
+  (was the protected station directory). Explicit `knowledgeFilePath` wins.
+
+## Added
+
+- **`apiTokenUser`** — optional `BUser` name; `apiToken` requests then run
+  as that user (writes allowed under its Niagara permissions, audited under
+  its name). Default empty = previous read-only behaviour.
+- `-32011` responses carry a `hint` explaining how to enable writes.
+
+## Compatibility
+
+- Validated on Tridium Niagara **4.15.1.16** (live station): reads,
+  `createComponent`, `setSlot`, `clearSlot`, `writePoint`, `invokeAction`,
+  `addExtension`, `linkSlots`, `unlinkSlots`, `removeComponent`,
+  `commitStation`, `createSpace`, `getFeatureDump`, `getServiceHealth`.
+- Java 8 bytecode. Signed with a dev cert — re-sign with your enterprise
+  cert for production.
+
+## Install / upgrade
+
+Stop the station, replace `$niagara_home/modules/niagaramcp-rt.jar`, start.
+Existing `McpPlatformService` settings are kept (do not delete and re-add
+the service — that resets `apiToken` / `knowledgeFilePath`). To enable
+writes with the existing `apiToken`, set `apiTokenUser` to a user whose
+role grants the needed permissions.
+
+## Changelog
+
+See [`CHANGELOG.md`](./CHANGELOG.md) — `[0.5.4]`.
+```
+
+---
+
 ## v0.5.3 — release notes (paste into the GitHub Release)
 
 ```markdown

@@ -11,6 +11,52 @@ _Nothing yet._
 
 ---
 
+## [0.5.4] — 2026-11-19
+
+Live-station fixes: write tools could not be used on a station running the
+module as a service (Niagara 4.15.1.16).
+
+### Fixed
+
+- **`tokenSalt` was never saved.** It was declared with `flags = 3`, which
+  is `READONLY | TRANSIENT` (the comment said SUMMARY+READONLY, but SUMMARY is
+  8). Transient slots are not written to the `.bog`, so a new salt was
+  generated on every station start (`generated initial tokenSalt` in every
+  console log) and every user token bound with `mcp:tokenHash` stopped
+  matching after a restart. Now `flags = READONLY`. Tokens bound before this
+  fix must be bound again once (the salt changes one last time).
+- **`AccessControlException … java.io.FilePermission` on live stations.**
+  `getServerInfo`, `getFeatureDump` and other tools that touch the
+  knowledge/audit files failed on a live station, even for files inside
+  `station_home` — the request threads appear to carry a restricted
+  inherited access-control context. Tool calls, resource reads, the knowledge load at start and
+  the `/health` file stat now run inside `AccessController.doPrivileged`
+  (new `com.niagaramcp.server.Privileged`), so only the module's own grants
+  apply. Niagara user permissions are unaffected (they are enforced via the
+  `Context` passed to Baja calls).
+- **Default knowledge file location** is now
+  `Sys.getStationHome()/niagaramcp/knowledge.yaml` (`stations/<name>/shared/…`,
+  the directory every module may use). The old default
+  (`Sys.getNiagaraUserHome()`, the protected station directory inside a
+  station) is denied by the Security Manager. An explicit
+  `knowledgeFilePath` still wins.
+
+### Added
+
+- **`apiTokenUser`** property on `BMcpPlatformService` (default empty =
+  unchanged behaviour). When it names an enabled `BUser`, requests that
+  authenticate with `apiToken` run as that user: write tools are allowed
+  under that user's Niagara permissions and audited under its name. This
+  makes writes work without provisioning a per-user `mcp:tokenHash`.
+- `-32011` responses now include a `hint` on how to enable writes.
+
+### Build
+
+- `preferredSymbol` set explicitly to `niagaramcp` in
+  `niagaramcp-rt.gradle.kts` (matches the previously deployed jar).
+
+---
+
 ## [0.5.3] — 2026-05-11
 
 The **user-Context write** milestone. Combines four increments that landed

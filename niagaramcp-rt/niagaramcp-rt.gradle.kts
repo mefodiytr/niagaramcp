@@ -19,6 +19,7 @@ plugins {
 // so the assembled module.xml ships with vendor="niagaramcp".
 moduleManifest {
   moduleName.set("niagaramcp")
+  preferredSymbol.set("niagaramcp")
   runtimeProfile.set(rt)
   vendor.set("niagaramcp")
 }

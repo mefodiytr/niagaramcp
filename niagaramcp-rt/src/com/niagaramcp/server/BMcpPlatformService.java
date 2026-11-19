@@ -21,6 +21,7 @@ import javax.baja.nre.annotations.NiagaraType;
 import javax.baja.sys.BComponent;
 import javax.baja.sys.BIService;
 import javax.baja.sys.Context;
+import javax.baja.sys.Flags;
 import javax.baja.sys.Property;
 import javax.baja.sys.Sys;
 import javax.baja.sys.Type;
@@ -120,15 +121,24 @@ import com.niagaramcp.server.tools.WritePointTool;
   @NiagaraProperty(name = "sessionCount",             type = "int",     defaultValue = "0", flags = 3),
   // v0.5: per-service salt for hashing user MCP tokens stored as
   // mcp:tokenHash tags on BUsers. Generated once on first
-  // serviceStarted; persists across restarts via .bog. flags=3
-  // (SUMMARY+READONLY) — visible to operators for diagnostic purposes
-  // but never edited by hand (changing the salt invalidates ALL
-  // existing user tokens at once, requiring a full rotation).
-  @NiagaraProperty(name = "tokenSalt",                type = "String",  defaultValue = "\"\"", flags = 3),
+  // serviceStarted; persists across restarts via .bog.
+  // v0.5.4 fix: was flags=3, which is READONLY|TRANSIENT (not
+  // SUMMARY+READONLY — SUMMARY is 8). TRANSIENT kept the salt out of the
+  // .bog, so it was regenerated on every station start and every bound
+  // user token stopped matching after a restart. Now flags=1 (READONLY):
+  // visible for diagnostics, never edited by hand (changing the salt
+  // invalidates ALL existing user tokens at once).
+  @NiagaraProperty(name = "tokenSalt",                type = "String",  defaultValue = "\"\"", flags = 1),
   // v0.5: gate for the test-only `setupTestUser` tool. Default false.
   // When true, smoke client can bind a tokenHash tag to a pre-created
   // BUser via setupTestUser; flip to false in production.
-  @NiagaraProperty(name = "enableTestSetup",          type = "boolean", defaultValue = "false")
+  @NiagaraProperty(name = "enableTestSetup",          type = "boolean", defaultValue = "false"),
+  // v0.5.4: optional BUser that apiToken requests run as. Empty (default)
+  // keeps the v0.5 behaviour: apiToken = service identity, write tools
+  // refused with -32011. When set to an enabled BUser's name, apiToken
+  // requests resolve to that user, so write tools run under that user's
+  // Niagara permissions and are audited under its name.
+  @NiagaraProperty(name = "apiTokenUser",             type = "String",  defaultValue = "\"\"")
 })
 public final class BMcpPlatformService extends BComponent implements BIService {
 
@@ -226,9 +236,10 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public int getSessionCount() { return getInt(sessionCount); }
   public void setSessionCount(int v) { setInt(sessionCount, v, null); }
 
-  // v0.5 — per-service salt for token hashing. flags=3.
+  // v0.5 — per-service salt for token hashing. v0.5.4: flags=1 (READONLY,
+  // persisted) — was 3 (READONLY|TRANSIENT, never saved to the .bog).
   // Initial value "" → triggers lazy generation in serviceStarted().
-  public static final Property tokenSalt = newProperty(3, "", null);
+  public static final Property tokenSalt = newProperty(Flags.READONLY, "", null);
   public String getTokenSalt() { return getString(tokenSalt); }
   public void setTokenSalt(String v) { setString(tokenSalt, v, null); }
 
@@ -236,6 +247,11 @@ public final class BMcpPlatformService extends BComponent implements BIService {
   public static final Property enableTestSetup = newProperty(0, false, null);
   public boolean getEnableTestSetup() { return getBoolean(enableTestSetup); }
   public void setEnableTestSetup(boolean v) { setBoolean(enableTestSetup, v, null); }
+
+  // v0.5.4 — BUser that apiToken requests run as (empty = service identity).
+  public static final Property apiTokenUser = newProperty(0, "", null);
+  public String getApiTokenUser() { return getString(apiTokenUser); }
+  public void setApiTokenUser(String v) { setString(apiTokenUser, v, null); }
 
   // --- TYPE (ALWAYS last static final) ---
   public static final Type TYPE = Sys.loadType(BMcpPlatformService.class);
@@ -399,7 +415,7 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     ks.setAutoBackup(getKnowledgeAutoBackup());
     ks.setBackupCount(getKnowledgeBackupCount());
     try {
-      ks.load();
+      Privileged.call(() -> { ks.load(); return null; });
     } catch (Exception e) {
       bcLog("KnowledgeStore.load failed (using empty model): " + e.getMessage());
     }
@@ -456,9 +472,38 @@ public final class BMcpPlatformService extends BComponent implements BIService {
     if (path != null && path.length() > 0) {
       return new File(path);
     }
-    File userHome = Sys.getNiagaraUserHome();
-    File dir = new File(userHome, "niagaramcp");
+    // v0.5.4: default under station_home (Sys.getStationHome(), i.e.
+    // stations/<name>/shared on 4.x) — the directory every module is granted
+    // read/write/delete on by the Security Manager. Sys.getNiagaraUserHome()
+    // inside a station resolves to the protected station directory, where a
+    // third-party module gets "access denied (java.io.FilePermission ...)".
+    File home = null;
+    try { home = Sys.getStationHome(); } catch (Throwable ignored) { }
+    if (home == null) home = Sys.getNiagaraUserHome();
+    File dir = new File(home, "niagaramcp");
     return new File(dir, "knowledge.yaml");
+  }
+
+  /**
+   * v0.5.4: the BUser that {@code apiToken} requests run as, or {@code null}
+   * when {@code apiTokenUser} is empty, names no user, or names a disabled
+   * user (then apiToken stays the read-only service identity).
+   */
+  public static javax.baja.user.BUser apiTokenBUser() {
+    BMcpPlatformService s = INSTANCE;
+    if (s == null) return null;
+    String name = s.getApiTokenUser();
+    if (name == null || name.trim().isEmpty()) return null;
+    try {
+      javax.baja.user.BUserService us =
+          (javax.baja.user.BUserService) Sys.getService(javax.baja.user.BUserService.TYPE);
+      if (us == null) return null;
+      javax.baja.user.BUser u = us.getUser(name.trim());
+      if (u == null || !u.getEnabled()) return null;
+      return u;
+    } catch (Exception e) {
+      return null;
+    }
   }
 
   @Override

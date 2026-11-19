@@ -78,8 +78,13 @@ Two kinds of bearer token are accepted:
    station — the gated `setupTestUser` tool).
 
 A given request is one or the other: if the bearer equals `apiToken` it is
-the service identity (never a user), otherwise it is resolved against the
+the service identity, otherwise it is resolved against the
 `mcp:tokenHash` walk.
+
+**v0.5.4 — `apiTokenUser`.** If `BMcpPlatformService.apiTokenUser` names an
+enabled `BUser`, `apiToken` requests run **as that user** instead of the
+service identity (write tools allowed under that user's permissions, audited
+under its name). Empty (default) keeps the behaviour above.
 
 ---
 
@@ -349,7 +354,9 @@ id → `-32003`.)
 |---|---|---|---|
 | `enabled` | boolean | true | Master on/off. `changed()` picks up edits — no station restart. |
 | `apiToken` | String | (empty) | The service-identity bearer. Set to a high-entropy random value. **Admin-equivalent.** |
-| `tokenSalt` | String (readonly) | auto | Base64, 16 bytes, lazily generated on first start. Salt for `mcp:tokenHash`. |
+| `apiTokenUser` | String | (empty) | v0.5.4. Name of an enabled `BUser` that `apiToken` requests run as. Empty = service identity (writes refused with `-32011`). |
+| `tokenSalt` | String (readonly) | auto | Base64, 16 bytes, generated on first start and persisted (v0.5.4; earlier versions regenerated it on every start). Salt for `mcp:tokenHash`. |
+| `knowledgeFilePath` | String | (empty) | Empty = `station_home/niagaramcp/knowledge.yaml` (v0.5.4; `stations/<name>/shared/…`). |
 | `enableTestSetup` | boolean | false | Gates the `setupTestUser` tool. Flip to true only on a smoke/CI station; flip back after. |
 | `sseHeartbeatSec` | int | 25 | SSE keep-alive interval. |
 | `mcpSessionIdleTimeoutSec` | int | 1800 | Streamable HTTP session idle eviction. |

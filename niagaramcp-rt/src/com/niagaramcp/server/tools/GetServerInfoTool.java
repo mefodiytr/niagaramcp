@@ -26,7 +26,7 @@ public final class GetServerInfoTool implements Tool {
    * on each release; this is the niagaramcp app version, distinct from the
    * Niagara module-manifest version (set in the build).
    */
-  public static final String NIAGARAMCP_VERSION = "0.5.3";
+  public static final String NIAGARAMCP_VERSION = "0.5.4";
 
   @Override public String name()        { return "getServerInfo"; }
   @Override public String getCategory() { return "diagnostic"; }
