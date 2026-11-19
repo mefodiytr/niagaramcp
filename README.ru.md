@@ -335,6 +335,32 @@ JSON-ответ.
 
 ---
 
+## Запись на работающей станции (v0.5.4)
+
+Исправления для станций, где модуль работает как сервис (проверено на
+Niagara 4.15.1.16):
+
+- **`apiTokenUser`** (новое свойство `BMcpPlatformService`, по умолчанию
+  пусто) — укажите включённого `BUser`, и запросы с `apiToken` выполняются
+  от его имени: write-инструменты работают с правами этого пользователя
+  Niagara и аудируются под его именем. Пусто — прежнее поведение (`apiToken`
+  = read-only сервисная identity, запись → `-32011`, теперь с `hint`).
+- **`tokenSalt` сохраняется** — был `READONLY | TRANSIENT` (`flags = 3`),
+  поэтому соль генерировалась заново при каждом старте и per-user токены
+  `mcp:tokenHash` переставали совпадать после рестарта. Существующие токены
+  нужно один раз перепривязать.
+- **Нет больше `AccessControlException` (`java.io.FilePermission`)** на
+  knowledge/audit-файлах — вызовы инструментов, чтение ресурсов, загрузка
+  knowledge и проверка файла в `/health` выполняются в
+  `AccessController.doPrivileged`.
+- **Knowledge-файл по умолчанию** → `<station_home>/niagaramcp/knowledge.yaml`.
+  Явный `knowledgeFilePath` по-прежнему имеет приоритет.
+
+Обновление: замените jar и перезапустите станцию; настройки сервиса
+сохраняются.
+
+---
+
 ## Link conversion (v0.5.3)
 
 - **`linkSlots` `converterType` arg** — `linkSlots {..., "converterType":

@@ -257,7 +257,10 @@ public final class McpProtocol {
     }
     String body;
     try {
-      body = r.read(uri);
+      // v0.5.4: run under the module's own SecurityManager grants (see Privileged).
+      body = Privileged.call(() -> r.read(uri));
+    } catch (RpcException e) {
+      throw e;
     } catch (Exception e) {
       throw new RpcException(ERR_INTERNAL, "Resource read failed: " + e.getMessage());
     }
@@ -352,14 +355,15 @@ public final class McpProtocol {
       JSONObject data = new JSONObject();
       data.put("tool", name);
       data.put("requiresUserContext", true);
+      data.put("hint", "Use a per-user MCP token (mcp:tokenHash tag on a BUser), or set " +
+          "McpPlatformService.apiTokenUser to an enabled BUser so apiToken calls run as that user.");
       throw new RpcException(ERR_USER_NOT_FOUND,
           "Tool '" + name + "' requires a user-Context bearer (apiToken " +
-          "matches the service identity, not a BUser)", data);
+          "matches the service identity, not a BUser, and apiTokenUser is not set " +
+          "or does not name an enabled user)", data);
     }
-    JSONObject args = params.optJSONObject("arguments");
-    if (args == null) {
-      args = new JSONObject();
-    }
+    JSONObject argsIn = params.optJSONObject("arguments");
+    final JSONObject args = (argsIn == null) ? new JSONObject() : argsIn;
 
     // v0.5: stash {resolvedUser, sessionId} in a thread-local so the
     // tool body can pull them when invoking UserContextGateway.run(...).
@@ -371,7 +375,11 @@ public final class McpProtocol {
     int errorCode = 0;            // 0 = no structured code
     JSONObject errorData = null;
     try {
-      text = t.call(args);
+      // v0.5.4: run under the module's own SecurityManager grants. Without
+      // this, file access (knowledge store, audit log, diagnostics) fails
+      // intermittently on live 4.15 stations with
+      // AccessControlException ... FilePermission — see Privileged.
+      text = Privileged.call(() -> t.call(args));
     } catch (RpcException e) {
       // Tools throw RpcException for their domain errors (e.g. -32014
       // ERR_ACTION_NOT_FOUND). MCP reports tool failures via isError
